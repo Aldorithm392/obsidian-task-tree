@@ -1,0 +1,10 @@
+{
+	"id": "task-tree",
+	"name": "Task Tree",
+	"version": "0.1.0",
+	"minAppVersion": "1.5.0",
+	"description": "See your Markdown tasks as a tree and a Kanban board at once. Break projects into nested subtasks; a parent's progress rolls up from its children. Plain Markdown, agent-ready.",
+	"author": "Saul",
+	"authorUrl": "",
+	"isDesktopOnly": false
+}

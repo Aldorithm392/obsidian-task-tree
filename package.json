@@ -1,0 +1,34 @@
+{
+	"name": "task-tree",
+	"version": "0.1.0",
+	"description": "See your Markdown tasks as a tree and a Kanban board, with roll-up progress. Plain Markdown, agent-ready.",
+	"main": "main.js",
+	"type": "module",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"version": "node version-bump.mjs && git add manifest.json versions.json",
+		"test": "node tests/run.mjs"
+	},
+	"keywords": [
+		"obsidian",
+		"obsidian-plugin",
+		"tasks",
+		"kanban",
+		"tree",
+		"okf",
+		"task-management"
+	],
+	"author": "Saul",
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "^22.15.17",
+		"@types/sortablejs": "^1.15.8",
+		"esbuild": "0.25.5",
+		"obsidian": "latest",
+		"typescript": "^5.8.3"
+	},
+	"dependencies": {
+		"sortablejs": "^1.15.6"
+	}
+}

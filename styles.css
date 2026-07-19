@@ -1,0 +1,315 @@
+/* Task Tree — all styling lives here (no inline styles except dynamic values),
+   built on Obsidian CSS variables so themes and snippets can override it. */
+
+.tt-view {
+	padding: 0;
+	height: 100%;
+	overflow: auto;
+}
+
+/* ---- toolbar ---- */
+.tt-toolbar {
+	position: sticky;
+	top: 0;
+	z-index: 5;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px 12px;
+	background: var(--background-primary);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+.tt-toolbar-title {
+	font-weight: 600;
+	font-size: var(--font-ui-medium);
+}
+.tt-toolbar-actions {
+	display: flex;
+	gap: 6px;
+}
+.tt-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 10px;
+	border-radius: var(--radius-s);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	cursor: pointer;
+	font-size: var(--font-ui-small);
+}
+.tt-btn:hover {
+	background: var(--background-modifier-hover);
+}
+.tt-btn-cta {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: transparent;
+}
+
+/* ---- kanban ---- */
+.tt-kanban {
+	display: flex;
+	gap: 12px;
+	align-items: flex-start;
+	padding: 12px;
+	min-height: 100%;
+	overflow-x: auto;
+}
+.tt-column {
+	flex: 0 0 272px;
+	max-width: 272px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	display: flex;
+	flex-direction: column;
+	max-height: 100%;
+}
+.tt-column-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 10px;
+	font-weight: 600;
+	border-bottom: 1px solid var(--background-modifier-border);
+	border-top: 3px solid var(--tt-col-color, var(--interactive-accent));
+	border-top-left-radius: var(--radius-m);
+	border-top-right-radius: var(--radius-m);
+}
+.tt-column-count {
+	color: var(--text-muted);
+	font-weight: 500;
+	font-size: var(--font-ui-smaller);
+	background: var(--background-modifier-border);
+	border-radius: 10px;
+	padding: 0 8px;
+}
+.tt-column-count.tt-wip-over {
+	color: var(--text-on-accent);
+	background: var(--text-error);
+}
+.tt-column-cards {
+	padding: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	overflow-y: auto;
+	min-height: 40px;
+}
+.tt-card {
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	padding: 8px 10px;
+	cursor: pointer;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.tt-card:hover {
+	border-color: var(--interactive-accent);
+}
+.tt-card-main {
+	display: flex;
+}
+.tt-card-text {
+	font-size: var(--font-ui-small);
+	line-height: 1.35;
+}
+.tt-breadcrumb {
+	display: block;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	margin-bottom: 3px;
+}
+.tt-card-meta {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 6px;
+}
+.tt-parent-tag {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 0 6px;
+}
+.tt-ghost {
+	opacity: 0.5;
+}
+
+/* ---- tree ---- */
+.tt-tree {
+	padding: 8px 12px 32px;
+}
+.tt-tree-list {
+	list-style: none;
+	margin: 0;
+	padding-left: 20px;
+}
+.tt-root-list {
+	padding-left: 4px;
+}
+.tt-node {
+	position: relative;
+}
+.tt-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 4px;
+	border-radius: var(--radius-s);
+}
+.tt-row:hover {
+	background: var(--background-modifier-hover);
+}
+.tt-toggle {
+	display: inline-flex;
+	width: 16px;
+	height: 16px;
+	color: var(--text-muted);
+	cursor: pointer;
+	flex: 0 0 auto;
+}
+.tt-toggle-empty {
+	width: 16px;
+	flex: 0 0 auto;
+}
+.tt-checkbox {
+	margin: 0;
+	flex: 0 0 auto;
+}
+.tt-node-text {
+	cursor: pointer;
+	font-size: var(--font-ui-small);
+}
+.tt-node-text.tt-done {
+	color: var(--text-muted);
+	text-decoration: line-through;
+}
+.tt-node-meta {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: auto;
+}
+.tt-focus-btn {
+	display: inline-flex;
+	color: var(--text-faint);
+	cursor: pointer;
+	opacity: 0;
+}
+.tt-row:hover .tt-focus-btn {
+	opacity: 1;
+}
+
+/* ---- focus bar ---- */
+.tt-focus-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 8px;
+	padding: 6px 4px;
+	border-bottom: 1px dashed var(--background-modifier-border);
+}
+.tt-focus-sep {
+	color: var(--text-faint);
+}
+.tt-focus-crumb {
+	color: var(--text-accent);
+	cursor: pointer;
+}
+.tt-focus-current {
+	font-weight: 600;
+}
+
+/* ---- shared chips / badges ---- */
+.tt-chip {
+	font-size: var(--font-ui-smaller);
+	padding: 0 7px;
+	border-radius: 9px;
+	color: var(--text-on-accent);
+	background: var(--tt-chip-color, var(--interactive-accent));
+	white-space: nowrap;
+}
+.tt-chip[data-role="todo"] {
+	background: var(--tt-chip-color, var(--background-modifier-border));
+	color: var(--text-muted);
+}
+.tt-chip[data-role="done"] {
+	background: var(--tt-chip-color, var(--color-green, #3aa675));
+}
+.tt-chip[data-role="doing"] {
+	background: var(--tt-chip-color, var(--color-yellow, #c99a2e));
+}
+.tt-chip[data-role="blocked"] {
+	background: var(--tt-chip-color, var(--color-red, #c0392b));
+}
+.tt-chip[data-role="cancelled"] {
+	background: var(--tt-chip-color, var(--background-modifier-border));
+	color: var(--text-faint);
+	text-decoration: line-through;
+}
+.tt-progress {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.tt-progress-text {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+.tt-progress-bar {
+	width: 44px;
+	height: 5px;
+	border-radius: 3px;
+	background: var(--background-modifier-border);
+	overflow: hidden;
+}
+.tt-progress-fill {
+	height: 100%;
+	background: var(--interactive-accent);
+}
+.tt-override-badge {
+	display: inline-flex;
+	color: var(--text-accent);
+}
+.tt-override-badge svg {
+	width: 13px;
+	height: 13px;
+}
+
+/* ---- placeholders ---- */
+.tt-placeholder {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	text-align: center;
+	height: 100%;
+	padding: 40px;
+	color: var(--text-muted);
+}
+.tt-placeholder-icon {
+	color: var(--text-faint);
+}
+.tt-placeholder-icon svg {
+	width: 40px;
+	height: 40px;
+}
+
+/* ---- settings ---- */
+.tt-column-row .tt-status-input {
+	width: 3ch;
+	text-align: center;
+}
+.tt-settings-warning {
+	color: var(--text-error);
+	font-size: var(--font-ui-smaller);
+	margin: 4px 0 10px;
+}

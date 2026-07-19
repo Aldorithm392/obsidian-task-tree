@@ -1,0 +1,19 @@
+# editors / os
+.vscode
+.idea
+*.iml
+.DS_Store
+
+# claude code local settings
+.claude/
+
+# npm
+node_modules/
+package-lock.json
+
+# build output (only shipped as release assets, never committed)
+main.js
+*.js.map
+
+# plugin runtime data
+data.json
