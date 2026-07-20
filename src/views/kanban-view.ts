@@ -97,6 +97,12 @@ export class KanbanView extends TaskTreeView {
 			const warn = meta.createSpan({ cls: "tt-warn", attr: { "aria-label": "A subtask below is blocked" } });
 			setIcon(warn, "alert-triangle");
 		}
+		const addBtn = meta.createSpan({ cls: "tt-row-btn tt-add-btn", attr: { "aria-label": "Add subtask" } });
+		setIcon(addBtn, "plus");
+		this.registerDomEvent(addBtn, "click", (e) => {
+			e.stopPropagation();
+			void addChildTask(this.plugin, model.file, node);
+		});
 
 		this.registerDomEvent(card, "click", () => this.openAtLine(model, node.line));
 		this.registerDomEvent(card, "contextmenu", (e) => {

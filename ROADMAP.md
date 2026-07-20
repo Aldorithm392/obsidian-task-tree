@@ -30,8 +30,18 @@ migration, a `tt_version` key can be introduced then, opt-in.
   drill-down); remembered per board via view state.
 - **Full-focus view** — open any task + its subtree distraction-free in a main-area pane.
 
+## Shipped (v0.3 — human-first)
+
+- **Clean default view:** opening a board shows just the tree/board; stats + dashboard are opt-in
+  (ribbon opens the plain tree, `showBoardStats` off by default).
+- **Inline + / − on every node, in every view** (list / diagram / columns / kanban): hover a node to
+  add a nested subtask or delete it — full editing without ever opening the raw note.
+- **Three-layer model made explicit:** the Markdown note is the shared structure; the plugin is the
+  human editing/visualization layer; an LLM reads the raw file. Dogfooded via `examples/plugin-development.md`.
+
 ## Next
 
+- [ ] "A task can also be a note" — right-click a task → open/create its documentation note (`[[link]]`).
 - [ ] Manual QA pass in a real vault; polish drag affordances and empty states.
 - [ ] Persist collapse/focus state per board across reloads.
 - [ ] Render card/​node text as Markdown (links, tags) via `MarkdownRenderer`.

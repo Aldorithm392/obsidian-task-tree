@@ -202,6 +202,19 @@ export class TreeView extends TaskTreeView {
 			});
 		}
 
+		const addBtn = meta.createSpan({ cls: "tt-row-btn tt-add-btn", attr: { "aria-label": "Add subtask" } });
+		setIcon(addBtn, "plus");
+		this.registerDomEvent(addBtn, "click", (e) => {
+			e.stopPropagation();
+			void addChildTask(this.plugin, model.file, node);
+		});
+		const delBtn = meta.createSpan({ cls: "tt-row-btn tt-del-btn", attr: { "aria-label": "Delete task" } });
+		setIcon(delBtn, "trash-2");
+		this.registerDomEvent(delBtn, "click", (e) => {
+			e.stopPropagation();
+			void this.deletePrompt(node, model);
+		});
+
 		this.registerDomEvent(host, "contextmenu", (e) => {
 			e.preventDefault();
 			this.nodeMenu(e, node, model);

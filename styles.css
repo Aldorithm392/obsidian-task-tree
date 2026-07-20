@@ -208,14 +208,31 @@
 	gap: 6px;
 	margin-left: auto;
 }
-.tt-focus-btn {
+.tt-focus-btn,
+.tt-row-btn {
 	display: inline-flex;
 	color: var(--text-faint);
 	cursor: pointer;
 	opacity: 0;
+	transition: opacity 80ms ease;
 }
-.tt-row:hover .tt-focus-btn {
+.tt-node-body:hover .tt-focus-btn,
+.tt-node-body:hover .tt-row-btn,
+.tt-card:hover .tt-row-btn {
+	opacity: 0.75;
+}
+.tt-focus-btn:hover,
+.tt-row-btn:hover {
 	opacity: 1;
+	color: var(--text-normal);
+}
+.tt-del-btn:hover {
+	color: var(--text-error);
+}
+.tt-focus-btn svg,
+.tt-row-btn svg {
+	width: 14px;
+	height: 14px;
 }
 
 /* ---- focus bar ---- */
