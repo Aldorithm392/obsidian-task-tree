@@ -503,6 +503,22 @@ export class TreeView extends TaskTreeView {
 		});
 	}
 
+	/** Move a node to be the last of its current siblings (reliable "drop at the end"). */
+	private async moveToEnd(node: TaskNode, model: BoardModel): Promise<void> {
+		const sibs = this.siblings(node, model);
+		const last = sibs[sibs.length - 1];
+		if (!last || last.id === node.id) return; // already last
+		await moveNode(this.plugin, model.file, {
+			start: node.line,
+			end: node.lastDescLine,
+			insertAfter: last.lastDescLine,
+			oldDepth: node.depth,
+			newDepth: node.depth,
+			indentUnit: getIndentUnit(this.plugin.settings),
+			bodyStart: model.bodyStart,
+		});
+	}
+
 	private subtreeIds(node: TaskNode): Set<string> {
 		const ids = new Set<string>();
 		const walk = (n: TaskNode): void => {
@@ -521,6 +537,7 @@ export class TreeView extends TaskTreeView {
 				animation: 150,
 				fallbackOnBody: true,
 				swapThreshold: 0.6,
+				emptyInsertThreshold: 16, // lets you drop into the tail of a branch (end-of-list)
 				draggable,
 				handle: ".tt-drag-handle",
 				ghostClass: "tt-ghost",
@@ -599,6 +616,9 @@ export class TreeView extends TaskTreeView {
 		);
 		menu.addItem((i) =>
 			i.setTitle("Move down").setIcon("arrow-down").onClick(() => void this.moveDown(node, model)),
+		);
+		menu.addItem((i) =>
+			i.setTitle("Move to end").setIcon("chevrons-down").onClick(() => void this.moveToEnd(node, model)),
 		);
 		menu.addItem((i) =>
 			i

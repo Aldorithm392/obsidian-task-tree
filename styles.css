@@ -679,3 +679,13 @@ h2.tt-dash-title {
 .tt-fullfocus-title {
 	margin: 0;
 }
+
+/* ---- a droppable tail so a task can be dropped at the END of a branch ---- */
+.tt-tree-list,
+.tt-dchildren,
+.tt-column-pane-body {
+	padding-bottom: 8px;
+}
+.tt-diagram {
+	padding-bottom: 16px;
+}
