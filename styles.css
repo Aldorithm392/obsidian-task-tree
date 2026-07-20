@@ -153,6 +153,25 @@
 	opacity: 0.5;
 }
 
+/* ---- drag onto a task to nest it (native drag-and-drop) ---- */
+.tt-dragging {
+	opacity: 0.4;
+}
+/* release in the MIDDLE of a task → nest as its child */
+.tt-drop-inside {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -2px;
+	border-radius: var(--radius-s);
+	background: var(--background-modifier-hover);
+}
+/* release near the TOP / BOTTOM edge → reorder above / below, same level */
+.tt-drop-before {
+	box-shadow: inset 0 2px 0 0 var(--interactive-accent);
+}
+.tt-drop-after {
+	box-shadow: inset 0 -2px 0 0 var(--interactive-accent);
+}
+
 /* ---- tree ---- */
 .tt-tree {
 	padding: 8px 12px 32px;
@@ -425,6 +444,11 @@
 	width: 16px;
 	height: 16px;
 }
+.tt-flip-btn {
+	margin-left: 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+}
 
 /* ---- dashboard header ---- */
 .tt-dash-header {
@@ -617,6 +641,15 @@ h2.tt-dash-title {
 }
 .tt-dchildren > .tt-dnode:only-child::after {
 	display: none;
+}
+
+/* ---- inverted diagram: the goal sits on the right, enablers flow into it ---- */
+/* Mirror the whole canvas, then un-mirror each box so the text still reads L→R. */
+.tt-diagram.is-inverted {
+	transform: scaleX(-1);
+}
+.tt-diagram.is-inverted .tt-dbox {
+	transform: scaleX(-1);
 }
 
 /* ---- columns layout ---- */

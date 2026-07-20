@@ -1,4 +1,3 @@
-import Sortable from "sortablejs";
 import { Menu, setIcon, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
 import { TaskTreeView, VIEW_TYPE_KANBAN, VIEW_TYPE_TREE } from "./base-view.ts";
 import type { BoardModel } from "../board-controller.ts";
@@ -32,8 +31,10 @@ export class TreeView extends TaskTreeView {
 	private focusId: string | null = null;
 	private fullFocus = false;
 	private layout: TreeLayout;
+	private inverted = false;
 	private columnPath: string[] = [];
 	private byId = new Map<string, TaskNode>();
+	private draggingId: string | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: TaskTreePlugin) {
 		super(leaf, plugin);
@@ -57,6 +58,7 @@ export class TreeView extends TaskTreeView {
 		return {
 			...super.getState(),
 			layout: this.layout,
+			inverted: this.inverted,
 			focusId: this.focusId,
 			fullFocus: this.fullFocus,
 			columnPath: this.columnPath,
@@ -67,11 +69,13 @@ export class TreeView extends TaskTreeView {
 		if (state && typeof state === "object") {
 			const s = state as Partial<{
 				layout: TreeLayout;
+				inverted: boolean;
 				focusId: string | null;
 				fullFocus: boolean;
 				columnPath: string[];
 			}>;
 			if (s.layout === "list" || s.layout === "diagram" || s.layout === "columns") this.layout = s.layout;
+			if (typeof s.inverted === "boolean") this.inverted = s.inverted;
 			if (typeof s.focusId === "string" || s.focusId === null) this.focusId = s.focusId ?? null;
 			if (typeof s.fullFocus === "boolean") this.fullFocus = s.fullFocus;
 			if (Array.isArray(s.columnPath)) {
@@ -95,6 +99,20 @@ export class TreeView extends TaskTreeView {
 			this.registerDomEvent(btn, "click", () => {
 				if (this.layout === layout) return;
 				this.layout = layout;
+				this.app.workspace.requestSaveLayout();
+				void this.render();
+			});
+		}
+
+		if (this.layout === "diagram") {
+			const flip = actions.createEl("button", {
+				cls: "tt-layout-btn tt-flip-btn",
+				attr: { "aria-label": "Invert: put the goal on the right, enablers flowing into it" },
+			});
+			setIcon(flip, "flip-horizontal-2");
+			if (this.inverted) flip.addClass("is-active");
+			this.registerDomEvent(flip, "click", () => {
+				this.inverted = !this.inverted;
 				this.app.workspace.requestSaveLayout();
 				void this.render();
 			});
@@ -150,8 +168,9 @@ export class TreeView extends TaskTreeView {
 		host.addClass("tt-node-body");
 		const hasChildren = node.children.length > 0;
 
-		const grip = host.createSpan({ cls: "tt-drag-handle", attr: { "aria-label": "Drag to move" } });
+		const grip = host.createSpan({ cls: "tt-drag-handle", attr: { "aria-label": "Drag onto another task to nest it" } });
 		setIcon(grip, "grip-vertical");
+		this.wireDrag(host, grip, node, model);
 
 		const toggle = host.createSpan({ cls: "tt-toggle" });
 		if (opts.toggle === "collapse" && hasChildren) {
@@ -236,7 +255,6 @@ export class TreeView extends TaskTreeView {
 		rootUl.dataset.parentDepth = "-1";
 		rootUl.dataset.parentLine = String(model.bodyStart - 1);
 		for (const node of roots) this.renderListNode(rootUl, node, model);
-		this.attachDnd(Array.from(scroll.querySelectorAll<HTMLElement>(".tt-tree-list")), ".tt-node", model);
 	}
 
 	private renderListNode(ul: HTMLElement, node: TaskNode, model: BoardModel): void {
@@ -266,15 +284,11 @@ export class TreeView extends TaskTreeView {
 
 	private renderDiagram(scroll: HTMLElement, roots: TaskNode[], model: BoardModel): void {
 		const canvas = scroll.createDiv({ cls: "tt-diagram" });
+		if (this.inverted) canvas.addClass("is-inverted");
 		canvas.dataset.parentId = "";
 		canvas.dataset.parentDepth = "-1";
 		canvas.dataset.parentLine = String(model.bodyStart - 1);
 		for (const node of roots) this.renderDiagramNode(canvas, node, model);
-		const zones = [
-			...Array.from(scroll.querySelectorAll<HTMLElement>(".tt-diagram")),
-			...Array.from(scroll.querySelectorAll<HTMLElement>(".tt-dchildren")),
-		];
-		this.attachDnd(zones, ".tt-dnode", model);
 	}
 
 	private renderDiagramNode(parent: HTMLElement, node: TaskNode, model: BoardModel): void {
@@ -319,7 +333,6 @@ export class TreeView extends TaskTreeView {
 			if (!parentNode || parentNode.children.length === 0) break;
 			this.renderColumnPane(wrap, parentNode.children, parentNode.text || "…", i + 1, model);
 		}
-		this.attachDnd(Array.from(scroll.querySelectorAll<HTMLElement>(".tt-column-pane-body")), ".tt-col-item", model);
 	}
 
 	private renderColumnPane(
@@ -586,63 +599,100 @@ export class TreeView extends TaskTreeView {
 		return ids;
 	}
 
-	/** Attach SortableJS drag-reparent to a set of drop containers. Reused by all tree layouts. */
-	private attachDnd(containers: HTMLElement[], draggable: string, model: BoardModel): void {
-		for (const container of containers) {
-			Sortable.create(container, {
-				group: "tt-tree",
-				animation: 150,
-				fallbackOnBody: true,
-				swapThreshold: 0.6,
-				emptyInsertThreshold: 16, // lets you drop into the tail of a branch (end-of-list)
-				draggable,
-				handle: ".tt-drag-handle",
-				ghostClass: "tt-ghost",
-				onEnd: (evt) => void this.onDrop(evt, model),
-			});
-		}
+	// ---- native drag-and-drop: drop ONTO a task to nest it ------------------
+	//
+	// The grip is the only draggable element; every row/box is a drop target.
+	// Where you release decides what happens, like an outliner:
+	//   • top edge    → drop ABOVE the target (same level, reorder)
+	//   • middle      → NEST as the target's last child (go deeper / "to the right")
+	//   • bottom edge → drop BELOW the target (same level, reorder)
+	// A leaf is a valid middle-drop target — it simply becomes a parent.
+
+	private static readonly DROP_HINTS = ["tt-drop-before", "tt-drop-after", "tt-drop-inside"] as const;
+
+	private wireDrag(host: HTMLElement, grip: HTMLElement, node: TaskNode, model: BoardModel): void {
+		grip.draggable = true;
+
+		this.registerDomEvent(grip, "dragstart", (e: DragEvent) => {
+			this.draggingId = node.id;
+			if (e.dataTransfer) {
+				e.dataTransfer.effectAllowed = "move";
+				e.dataTransfer.setData("text/plain", node.id);
+				e.dataTransfer.setDragImage(host, 12, 12);
+			}
+			host.addClass("tt-dragging");
+		});
+		this.registerDomEvent(grip, "dragend", () => {
+			this.draggingId = null;
+			host.removeClass("tt-dragging");
+			this.clearDropHints();
+		});
+
+		this.registerDomEvent(host, "dragover", (e: DragEvent) => {
+			const dragged = this.draggingId ? this.byId.get(this.draggingId) : null;
+			if (!dragged || dragged.id === node.id || this.subtreeIds(dragged).has(node.id)) return;
+			e.preventDefault();
+			if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+			host.removeClass(...TreeView.DROP_HINTS);
+			host.addClass(`tt-drop-${this.dropZone(e, host)}`);
+		});
+		this.registerDomEvent(host, "dragleave", () => host.removeClass(...TreeView.DROP_HINTS));
+		this.registerDomEvent(host, "drop", (e: DragEvent) => {
+			e.preventDefault();
+			e.stopPropagation();
+			const draggedId = this.draggingId;
+			const zone = this.dropZone(e, host);
+			host.removeClass(...TreeView.DROP_HINTS);
+			if (draggedId) void this.applyDrop(draggedId, node, zone, model);
+		});
 	}
 
-	private async onDrop(evt: Sortable.SortableEvent, model: BoardModel): Promise<void> {
-		try {
-			const li = evt.item as HTMLElement;
-			const id = li.dataset.id;
-			if (!id) return;
-			const node = this.byId.get(id);
-			if (!node) return;
+	private dropZone(e: DragEvent, el: HTMLElement): "before" | "after" | "inside" {
+		const rect = el.getBoundingClientRect();
+		const y = e.clientY - rect.top;
+		const h = rect.height || 1;
+		if (y < h * 0.28) return "before";
+		if (y > h * 0.72) return "after";
+		return "inside";
+	}
 
-			const toUl = evt.to as HTMLElement;
-			const newParentId = toUl.dataset.parentId ? toUl.dataset.parentId : null;
+	private clearDropHints(): void {
+		this.containerEl
+			.querySelectorAll("." + TreeView.DROP_HINTS.join(", ."))
+			.forEach((el) => el.classList.remove(...TreeView.DROP_HINTS));
+	}
 
-			if (newParentId && this.subtreeIds(node).has(newParentId)) {
-				await this.render();
-				return;
-			}
+	private async applyDrop(
+		draggedId: string,
+		target: TaskNode,
+		zone: "before" | "after" | "inside",
+		model: BoardModel,
+	): Promise<void> {
+		const dragged = this.byId.get(draggedId);
+		if (!dragged || dragged.id === target.id || this.subtreeIds(dragged).has(target.id)) return;
 
-			const newParentDepth = Number(toUl.dataset.parentDepth ?? "-1");
-			const newDepth = newParentDepth + 1;
-
-			const prev = li.previousElementSibling as HTMLElement | null;
-			let insertAfter: number;
-			if (prev && prev.dataset.subtreeEnd) {
-				insertAfter = Number(prev.dataset.subtreeEnd);
-			} else {
-				insertAfter = Number(toUl.dataset.parentLine ?? String(model.bodyStart - 1));
-			}
-			if (!Number.isFinite(insertAfter)) insertAfter = model.bodyStart - 1;
-
-			await moveNode(this.plugin, model.file, {
-				start: node.line,
-				end: node.lastDescLine,
-				insertAfter,
-				oldDepth: node.depth,
-				newDepth,
-				indentUnit: getIndentUnit(this.plugin.settings),
-				bodyStart: model.bodyStart,
-			});
-		} catch {
-			await this.render();
+		let insertAfter: number;
+		let newDepth: number;
+		if (zone === "inside") {
+			insertAfter = target.lastDescLine; // nest as the target's last child
+			newDepth = target.depth + 1;
+		} else if (zone === "before") {
+			insertAfter = target.line - 1; // land just above the target, same level
+			newDepth = target.depth;
+		} else {
+			insertAfter = target.lastDescLine; // land just below the target's subtree
+			newDepth = target.depth;
 		}
+
+		await moveNode(this.plugin, model.file, {
+			start: dragged.line,
+			end: dragged.lastDescLine,
+			insertAfter,
+			oldDepth: dragged.depth,
+			newDepth,
+			indentUnit: getIndentUnit(this.plugin.settings),
+			bodyStart: model.bodyStart,
+		});
 	}
 
 	private nodeMenu(e: MouseEvent, node: TaskNode, model: BoardModel): void {
