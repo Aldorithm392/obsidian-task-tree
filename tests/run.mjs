@@ -278,7 +278,8 @@ test("lift a 4-space child to root with the file's own unit lands at column 0", 
 	});
 	assert.equal(out, ["- [ ] A", "- [ ] B", "- [ ] child ^t-abc123"].join("\n"));
 });
-test("lifting a space-indented child with a MISMATCHED tab unit fails to strip (why detection matters)", () => {
+test("absolute rebase lifts to column 0 even with a mismatched unit", () => {
+	// Because we rebase to newDepth (not strip a delta), the wrong unit can't leave residue.
 	const text = ["- [ ] A", "    - [ ] child", "- [ ] B"].join("\n");
 	const out = moveSubtreeInText(text, {
 		start: 1,
@@ -286,10 +287,22 @@ test("lifting a space-indented child with a MISMATCHED tab unit fails to strip (
 		insertAfter: 2,
 		oldDepth: 1,
 		newDepth: 0,
-		indentUnit: "\t", // wrong unit for a space file — cannot strip the 4 spaces
+		indentUnit: "\t", // "wrong" unit for a space file — rebase still lands at column 0
 	});
-	// The old (buggy) behaviour: the "lifted" line still carries its 4 spaces.
-	assert.equal(out.split("\n")[2], "    - [ ] child");
+	assert.equal(out.split("\n")[2], "- [ ] child");
+});
+test("mixed tab/space file: lifting a deep space branch to root lands at column 0, keeps relative shape", () => {
+	// A: tab-indented branch; B: space-indented branch. Move B1a (8 spaces, depth 2) to root.
+	const text = ["- [ ] A", "\t- [ ] A1", "- [ ] B", "    - [ ] B1", "        - [ ] B1a"].join("\n");
+	const out = moveSubtreeInText(text, {
+		start: 4,
+		end: 4,
+		insertAfter: 4, // reinsert in place, shallower
+		oldDepth: 2,
+		newDepth: 0,
+		indentUnit: "\t", // detected from A1 — the WRONG style for the B branch
+	});
+	assert.equal(out.split("\n")[4], "- [ ] B1a");
 });
 test("re-indent with 2-space unit", () => {
 	const text = ["- [ ] A", "  - [ ] A1", "- [ ] B"].join("\n");

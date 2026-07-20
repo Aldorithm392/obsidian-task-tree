@@ -125,15 +125,18 @@ export interface MoveSubtreeOptions {
  * block id inside the branch is preserved verbatim.
  */
 export function moveSubtreeInText(text: string, opts: MoveSubtreeOptions): string {
-	const { start, end, insertAfter, oldDepth, newDepth, indentUnit } = opts;
+	const { start, end, insertAfter, newDepth, indentUnit } = opts;
 	const lines = text.split("\n");
 	if (start < 0 || end >= lines.length || start > end) return text;
 	// Refuse dropping strictly inside the moved block. insertAfter === end is the
 	// legitimate "reinsert in place" case (e.g. outdenting the last child), so allow it.
 	if (insertAfter >= start && insertAfter < end) return text;
 
-	const delta = newDepth - oldDepth;
-	const block = lines.slice(start, end + 1).map((l) => reindent(l, delta, indentUnit));
+	// Re-base the whole branch onto newDepth. Using the subtree root's own indent as
+	// the anchor (not a depth delta) keeps this correct even if the file mixes tabs and
+	// spaces — an absolute rebase can't "fail to strip" a differently-styled branch.
+	const rootWs = leadingWs(lines[start] ?? "");
+	const block = lines.slice(start, end + 1).map((l) => rebaseIndent(l, rootWs, newDepth, indentUnit));
 	const without = [...lines.slice(0, start), ...lines.slice(end + 1)];
 	const blockLen = end - start + 1;
 
@@ -151,18 +154,20 @@ export function moveSubtreeInText(text: string, opts: MoveSubtreeOptions): strin
 	return result.join("\n");
 }
 
-// Shift a line's indentation by `delta` whole units, preserving its exact relative
-// indentation (so nested children and non-task continuation lines keep their shape).
-function reindent(line: string, delta: number, unit: string): string {
-	if (delta === 0) return line;
+function leadingWs(line: string): string {
+	const m = /^[ \t]*/.exec(line);
+	return m ? m[0] : "";
+}
+
+// Re-base a moved subtree line: the subtree root lands at exactly `newDepth` units of
+// `unit`, and every descendant keeps the whitespace it had *beyond the root's* original
+// indent — so relative nesting (and non-task continuation lines) survive even when the
+// file mixes tabs and spaces, which a delta-based prefix-strip could silently mishandle.
+function rebaseIndent(line: string, rootWs: string, newDepth: number, unit: string): string {
 	if (line.replace(/^\s+/, "") === "") return line; // blank line: leave untouched
-	if (delta > 0) return unit.repeat(delta) + line;
-	let out = line;
-	for (let i = 0; i < -delta; i++) {
-		if (out.startsWith(unit)) out = out.slice(unit.length);
-		else break;
-	}
-	return out;
+	const ws = leadingWs(line);
+	const extra = ws.startsWith(rootWs) ? ws.slice(rootWs.length) : ws;
+	return unit.repeat(Math.max(0, newDepth)) + extra + line.slice(ws.length);
 }
 
 // ---- task CRUD (dashboard editing) ------------------------------------------

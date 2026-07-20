@@ -59,11 +59,20 @@ export async function loadBoard(plugin: TaskTreePlugin, file: TFile): Promise<Bo
 	computeRollup(roots, rollupOpts);
 	markBlockedPaths(roots);
 
-	// One depth-1 node's leading whitespace IS one indentation level in this file.
-	// Use it so moves/inserts match the file's own style (tabs vs N spaces), not the
-	// global setting — a mismatch silently corrupts nesting when re-indenting.
-	const oneLevel = flatten(roots).find((n) => n.depth === 1 && n.indentText.length > 0);
-	const indentUnit = oneLevel ? oneLevel.indentText : getIndentUnit(settings);
+	// One indentation level = the whitespace a child adds on top of its PARENT's indent
+	// (not a child's full leading whitespace — a root could itself be indented). Detected
+	// so moves/inserts match the file's own style (tabs vs N spaces), not the global setting.
+	const nodes = flatten(roots);
+	const nodeById = new Map(nodes.map((n) => [n.id, n]));
+	let indentUnit = getIndentUnit(settings);
+	for (const n of nodes) {
+		if (!n.parentId) continue;
+		const p = nodeById.get(n.parentId);
+		if (p && n.indentText.length > p.indentText.length && n.indentText.startsWith(p.indentText)) {
+			indentUnit = n.indentText.slice(p.indentText.length);
+			break;
+		}
+	}
 
 	return { file, lines, roots, columns, rollupOpts, bodyStart: frontmatterEndLine(lines), indentUnit };
 }
@@ -119,7 +128,13 @@ export async function moveNode(
 	opts: MoveSubtreeOptions,
 	movedId?: string,
 ): Promise<void> {
-	await plugin.app.vault.process(file, (d) => moveSubtreeInText(d, opts));
+	let changed = false;
+	await plugin.app.vault.process(file, (d) => {
+		const next = moveSubtreeInText(d, opts);
+		changed = next !== d;
+		return next;
+	});
+	if (!changed) return; // a no-op move (dropped in place) shouldn't touch or queue anything
 	// The moved subtree's position changed → its task-notes' frontmatter is now stale.
 	// Queue a resync that runs once the board's metadata cache reflects the new tree.
 	if (movedId) plugin.queueNoteSync(file.path, movedId);
@@ -241,7 +256,17 @@ function sanitizeFileName(name: string): string {
 	return name.replace(FILE_UNSAFE, " ").replace(/\s+/g, " ").trim().slice(0, 100);
 }
 
-const WIKILINK_RE = /\[\[([^\]|#]+)(?:\|[^\]]+)?\]\]/;
+/**
+ * The TRAILING wikilink target of a task line. A task's own note is linked by the
+ * `[[name]]` openOrCreateTaskNote appends at the end, so we take the LAST link — never
+ * a cross-reference to another task earlier in the same line.
+ */
+function lastWikilink(text: string): string | null {
+	const re = /\[\[([^\]|#]+)(?:\|[^\]]+)?\]\]/g;
+	let last: string | null = null;
+	for (let m = re.exec(text); m; m = re.exec(text)) last = m[1] ?? null;
+	return last ? last.trim() : null;
+}
 
 function cleanTitle(text: string): string {
 	return text.replace(/\[\[|\]\]/g, "").replace(/\s+/g, " ").trim();
@@ -249,16 +274,19 @@ function cleanTitle(text: string): string {
 
 /** The self-describing frontmatter + body for a task's own note (an OKF concept). */
 function taskNoteContent(node: TaskNode, meta: TaskNoteMeta, boardName: string, noteName: string): string {
-	const title = cleanTitle(node.text) || noteName;
+	// Use the same stripLinks + the same field shapes as syncTaskNotesForMove, so a
+	// freshly-created note and a re-synced one are byte-identical. JSON-encode the string
+	// values so a colon/quote/bracket in a title can't break the YAML.
+	const title = stripLinks(node.text) || noteName;
 	const lines = [
 		"---",
 		"type: task-note",
-		`title: ${title}`,
+		`title: ${JSON.stringify(title)}`,
 		`board: "[[${boardName}]]"`,
-		`parent: ${meta.parentText ? cleanTitle(meta.parentText) : "(root)"}`,
+		`parent: ${JSON.stringify(meta.parentText ? stripLinks(meta.parentText) : "(root)")}`,
 		`depth: ${meta.depth}`,
 		`distance_to_main: ${meta.depth}`,
-		`path: ${[...meta.path.map(cleanTitle), title].join(" / ")}`,
+		`path: ${JSON.stringify([...meta.path.map(stripLinks), title].join(" / "))}`,
 	];
 	if (node.hasStoredId) lines.push(`task_id: ${node.id}`);
 	lines.push("---", "", `# ${title}`, "", "## Progress", "", "## Status", "", "## Notes", "");
@@ -278,9 +306,9 @@ export async function openOrCreateTaskNote(
 	const { app } = plugin;
 
 	// Already linked → just open it (Obsidian creates it if missing).
-	const linked = WIKILINK_RE.exec(node.text);
-	if (linked && linked[1]) {
-		await app.workspace.openLinkText(linked[1].trim(), model.file.path, true);
+	const linked = lastWikilink(node.text);
+	if (linked) {
+		await app.workspace.openLinkText(linked, model.file.path, true);
 		return;
 	}
 
@@ -316,14 +344,18 @@ function stripLinks(text: string): string {
 	return text.replace(/\[\[[^\]]*\]\]/g, "").replace(/\s+/g, " ").trim();
 }
 
-/** The task-note a task links to — but only if it is actually one of our task-notes. */
+/** The task-note a task links to — but only if it is actually THIS task's own note. */
 function resolveTaskNote(plugin: TaskTreePlugin, sourcePath: string, node: TaskNode): TFile | null {
-	const m = WIKILINK_RE.exec(node.text);
-	if (!m || !m[1]) return null;
-	const dest = plugin.app.metadataCache.getFirstLinkpathDest(m[1].trim(), sourcePath);
+	const link = lastWikilink(node.text);
+	if (!link) return null;
+	const dest = plugin.app.metadataCache.getFirstLinkpathDest(link, sourcePath);
 	if (!(dest instanceof TFile)) return null;
-	const type = plugin.app.metadataCache.getFileCache(dest)?.frontmatter?.["type"];
-	return type === "task-note" ? dest : null;
+	const fm = plugin.app.metadataCache.getFileCache(dest)?.frontmatter;
+	if (fm?.["type"] !== "task-note") return null;
+	// If the note records its owning task, require a match — a stray cross-reference
+	// link can then never clobber a different task's note.
+	if (node.hasStoredId && fm["task_id"] !== undefined && fm["task_id"] !== node.id) return null;
+	return dest;
 }
 
 function nodeMeta(node: TaskNode, byId: Map<string, TaskNode>): TaskNoteMeta {
@@ -355,13 +387,20 @@ export async function syncTaskNotesForMove(
 	const byId = new Map(flatten(model.roots).map((n) => [n.id, n]));
 
 	const subtree = new Map<string, TaskNode>();
+	let unresolved = false;
 	for (const id of movedIds) {
 		const node = byId.get(id);
-		if (!node) continue;
+		if (!node) {
+			unresolved = true; // a position-keyed (id-less) task the move renumbered
+			continue;
+		}
 		for (const n of flatten([node])) subtree.set(n.id, n);
 	}
 
-	for (const n of subtree.values()) {
+	// If an id couldn't be resolved, we can't know which subtree moved — refresh every
+	// task-note so none is left stale. (Only notes that actually exist are written.)
+	const targets = unresolved ? [...byId.values()] : [...subtree.values()];
+	for (const n of targets) {
 		if (!n.isTask) continue;
 		const note = resolveTaskNote(plugin, file.path, n);
 		if (!note) continue;
