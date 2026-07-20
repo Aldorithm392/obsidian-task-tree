@@ -400,10 +400,24 @@ export async function syncTaskNotesForMove(
 	// If an id couldn't be resolved, we can't know which subtree moved — refresh every
 	// task-note so none is left stale. (Only notes that actually exist are written.)
 	const targets = unresolved ? [...byId.values()] : [...subtree.values()];
+
+	// Resolve first, and record every task that claims each note. A note claimed by more
+	// than one task is ambiguous (e.g. two tasks share a trailing link, no task_id) —
+	// skip it rather than let document order silently pick a winner.
+	const claims = new Map<string, TaskNode[]>();
+	const notes = new Map<string, TFile>();
 	for (const n of targets) {
 		if (!n.isTask) continue;
 		const note = resolveTaskNote(plugin, file.path, n);
 		if (!note) continue;
+		notes.set(note.path, note);
+		(claims.get(note.path) ?? claims.set(note.path, []).get(note.path)!).push(n);
+	}
+
+	for (const [path, owners] of claims) {
+		if (owners.length !== 1) continue; // ambiguous ownership — leave it alone
+		const n = owners[0]!;
+		const note = notes.get(path)!;
 		const meta = nodeMeta(n, byId);
 		const title = stripLinks(n.text) || note.basename;
 		await plugin.app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {

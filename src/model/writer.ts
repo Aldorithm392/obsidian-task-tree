@@ -125,7 +125,7 @@ export interface MoveSubtreeOptions {
  * block id inside the branch is preserved verbatim.
  */
 export function moveSubtreeInText(text: string, opts: MoveSubtreeOptions): string {
-	const { start, end, insertAfter, newDepth, indentUnit } = opts;
+	const { start, end, insertAfter, oldDepth, newDepth, indentUnit } = opts;
 	const lines = text.split("\n");
 	if (start < 0 || end >= lines.length || start > end) return text;
 	// Refuse dropping strictly inside the moved block. insertAfter === end is the
@@ -136,7 +136,7 @@ export function moveSubtreeInText(text: string, opts: MoveSubtreeOptions): strin
 	// the anchor (not a depth delta) keeps this correct even if the file mixes tabs and
 	// spaces — an absolute rebase can't "fail to strip" a differently-styled branch.
 	const rootWs = leadingWs(lines[start] ?? "");
-	const block = lines.slice(start, end + 1).map((l) => rebaseIndent(l, rootWs, newDepth, indentUnit));
+	const block = lines.slice(start, end + 1).map((l) => rebaseIndent(l, rootWs, oldDepth, newDepth, indentUnit));
 	const without = [...lines.slice(0, start), ...lines.slice(end + 1)];
 	const blockLen = end - start + 1;
 
@@ -161,13 +161,23 @@ function leadingWs(line: string): string {
 
 // Re-base a moved subtree line: the subtree root lands at exactly `newDepth` units of
 // `unit`, and every descendant keeps the whitespace it had *beyond the root's* original
-// indent — so relative nesting (and non-task continuation lines) survive even when the
-// file mixes tabs and spaces, which a delta-based prefix-strip could silently mishandle.
-function rebaseIndent(line: string, rootWs: string, newDepth: number, unit: string): string {
+// indent — so relative nesting survives even when the file mixes tabs and spaces, which a
+// delta-based prefix-strip could silently mishandle.
+function rebaseIndent(line: string, rootWs: string, oldDepth: number, newDepth: number, unit: string): string {
 	if (line.replace(/^\s+/, "") === "") return line; // blank line: leave untouched
 	const ws = leadingWs(line);
-	const extra = ws.startsWith(rootWs) ? ws.slice(rootWs.length) : ws;
-	return unit.repeat(Math.max(0, newDepth)) + extra + line.slice(ws.length);
+	if (ws.startsWith(rootWs)) {
+		// Shares the root's prefix (task lines + their normal descendants): absolute rebase.
+		return unit.repeat(Math.max(0, newDepth)) + ws.slice(rootWs.length) + line.slice(ws.length);
+	}
+	// A differently-styled line (e.g. a space-indented continuation note inside a
+	// tab-indented branch): shift by the depth delta instead of resetting, so it isn't
+	// over-indented.
+	const delta = Math.max(0, newDepth) - Math.max(0, oldDepth);
+	let extra = ws;
+	if (delta > 0) extra = unit.repeat(delta) + ws;
+	else for (let n = -delta; n > 0 && extra.startsWith(unit); n--) extra = extra.slice(unit.length);
+	return extra + line.slice(ws.length);
 }
 
 // ---- task CRUD (dashboard editing) ------------------------------------------

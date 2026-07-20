@@ -304,6 +304,21 @@ test("mixed tab/space file: lifting a deep space branch to root lands at column 
 	});
 	assert.equal(out.split("\n")[4], "- [ ] B1a");
 });
+test("mixed-indent continuation line shifts by delta (not reset) when its subtree moves", () => {
+	// X is tab-indented; a space-indented continuation note sits under it (different style).
+	const text = ["- [ ] A", "\t- [ ] X", "    spaces note", "- [ ] C"].join("\n");
+	const out = moveSubtreeInText(text, {
+		start: 1,
+		end: 2, // X + its continuation note
+		insertAfter: 0, // nest under A
+		oldDepth: 1,
+		newDepth: 2,
+		indentUnit: "\t",
+	});
+	const lines = out.split("\n");
+	assert.equal(lines[1], "\t\t- [ ] X"); // task line: 1 tab -> 2 tabs
+	assert.equal(lines[2], "\t    spaces note"); // note: shifted by +1, keeps its 4 spaces (not over-indented)
+});
 test("re-indent with 2-space unit", () => {
 	const text = ["- [ ] A", "  - [ ] A1", "- [ ] B"].join("\n");
 	const out = moveSubtreeInText(text, {
