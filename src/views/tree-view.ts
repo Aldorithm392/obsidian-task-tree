@@ -139,7 +139,6 @@ export class TreeView extends TaskTreeView {
 			this.renderColumns(scroll, roots, model);
 		} else {
 			this.renderList(scroll, roots, model);
-			this.setupDnd(scroll, model);
 		}
 	}
 
@@ -148,6 +147,9 @@ export class TreeView extends TaskTreeView {
 	private buildRowContent(host: HTMLElement, node: TaskNode, model: BoardModel, opts: RowOptions): void {
 		host.addClass("tt-node-body");
 		const hasChildren = node.children.length > 0;
+
+		const grip = host.createSpan({ cls: "tt-drag-handle", attr: { "aria-label": "Drag to move" } });
+		setIcon(grip, "grip-vertical");
 
 		const toggle = host.createSpan({ cls: "tt-toggle" });
 		if (opts.toggle === "collapse" && hasChildren) {
@@ -225,6 +227,7 @@ export class TreeView extends TaskTreeView {
 		rootUl.dataset.parentDepth = "-1";
 		rootUl.dataset.parentLine = String(model.bodyStart - 1);
 		for (const node of roots) this.renderListNode(rootUl, node, model);
+		this.attachDnd(Array.from(scroll.querySelectorAll<HTMLElement>(".tt-tree-list")), ".tt-node", model);
 	}
 
 	private renderListNode(ul: HTMLElement, node: TaskNode, model: BoardModel): void {
@@ -236,8 +239,6 @@ export class TreeView extends TaskTreeView {
 		li.setAttribute("data-task", node.statusChar);
 
 		const row = li.createDiv({ cls: "tt-row" });
-		const grip = row.createSpan({ cls: "tt-drag-handle", attr: { "aria-label": "Drag to move" } });
-		setIcon(grip, "grip-vertical");
 		this.buildRowContent(row, node, model, {
 			toggle: "collapse",
 			editTrigger: "click",
@@ -256,13 +257,24 @@ export class TreeView extends TaskTreeView {
 
 	private renderDiagram(scroll: HTMLElement, roots: TaskNode[], model: BoardModel): void {
 		const canvas = scroll.createDiv({ cls: "tt-diagram" });
+		canvas.dataset.parentId = "";
+		canvas.dataset.parentDepth = "-1";
+		canvas.dataset.parentLine = String(model.bodyStart - 1);
 		for (const node of roots) this.renderDiagramNode(canvas, node, model);
+		const zones = [
+			...Array.from(scroll.querySelectorAll<HTMLElement>(".tt-diagram")),
+			...Array.from(scroll.querySelectorAll<HTMLElement>(".tt-dchildren")),
+		];
+		this.attachDnd(zones, ".tt-dnode", model);
 	}
 
 	private renderDiagramNode(parent: HTMLElement, node: TaskNode, model: BoardModel): void {
 		const dnode = parent.createDiv({ cls: "tt-dnode" });
+		dnode.dataset.id = node.id;
+		dnode.dataset.line = String(node.line);
+		dnode.dataset.subtreeEnd = String(node.lastDescLine);
+		dnode.dataset.depth = String(node.depth);
 		const box = dnode.createDiv({ cls: "tt-dbox" });
-		box.dataset.id = node.id;
 		box.setAttribute("data-task", node.statusChar);
 		this.buildRowContent(box, node, model, {
 			toggle: "collapse",
@@ -270,6 +282,9 @@ export class TreeView extends TaskTreeView {
 		});
 		if (node.children.length > 0 && !this.collapsed.has(node.id)) {
 			const kids = dnode.createDiv({ cls: "tt-dchildren" });
+			kids.dataset.parentId = node.id;
+			kids.dataset.parentDepth = String(node.depth);
+			kids.dataset.parentLine = String(node.line);
 			for (const child of node.children) this.renderDiagramNode(kids, child, model);
 		}
 	}
@@ -295,6 +310,7 @@ export class TreeView extends TaskTreeView {
 			if (!parentNode || parentNode.children.length === 0) break;
 			this.renderColumnPane(wrap, parentNode.children, parentNode.text || "…", i + 1, model);
 		}
+		this.attachDnd(Array.from(scroll.querySelectorAll<HTMLElement>(".tt-column-pane-body")), ".tt-col-item", model);
 	}
 
 	private renderColumnPane(
@@ -308,9 +324,25 @@ export class TreeView extends TaskTreeView {
 		const pane = wrap.createDiv({ cls: "tt-column-pane" });
 		pane.createDiv({ cls: "tt-column-pane-head", text: header });
 		const body = pane.createDiv({ cls: "tt-column-pane-body" });
+		// The drop-parent for this column: root for column 0, else the drilled node it lists.
+		if (colIndex === 0) {
+			body.dataset.parentId = "";
+			body.dataset.parentDepth = "-1";
+			body.dataset.parentLine = String(model.bodyStart - 1);
+		} else {
+			const parentId = this.columnPath[colIndex - 1];
+			const parentNode = parentId ? this.byId.get(parentId) : undefined;
+			if (parentNode) {
+				body.dataset.parentId = parentNode.id;
+				body.dataset.parentDepth = String(parentNode.depth);
+				body.dataset.parentLine = String(parentNode.line);
+			}
+		}
 		for (const node of items) {
 			const item = body.createDiv({ cls: "tt-col-item" });
 			item.dataset.id = node.id;
+			item.dataset.line = String(node.line);
+			item.dataset.subtreeEnd = String(node.lastDescLine);
 			item.setAttribute("data-task", node.statusChar);
 			if (node.id === selectedId) item.addClass("is-selected");
 			this.buildRowContent(item, node, model, {
@@ -481,20 +513,20 @@ export class TreeView extends TaskTreeView {
 		return ids;
 	}
 
-	private setupDnd(scroll: HTMLElement, model: BoardModel): void {
-		const lists = scroll.querySelectorAll<HTMLElement>(".tt-tree-list");
-		lists.forEach((list) => {
-			Sortable.create(list, {
+	/** Attach SortableJS drag-reparent to a set of drop containers. Reused by all tree layouts. */
+	private attachDnd(containers: HTMLElement[], draggable: string, model: BoardModel): void {
+		for (const container of containers) {
+			Sortable.create(container, {
 				group: "tt-tree",
 				animation: 150,
 				fallbackOnBody: true,
 				swapThreshold: 0.6,
-				draggable: ".tt-node",
+				draggable,
 				handle: ".tt-drag-handle",
 				ghostClass: "tt-ghost",
 				onEnd: (evt) => void this.onDrop(evt, model),
 			});
-		});
+		}
 	}
 
 	private async onDrop(evt: Sortable.SortableEvent, model: BoardModel): Promise<void> {
