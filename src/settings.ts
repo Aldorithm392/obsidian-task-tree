@@ -21,6 +21,8 @@ export interface TaskTreeSettings {
 	taskNoteFolder: string;
 	/** Folder where the "create new board" command puts new boards. Empty = vault root. */
 	newBoardFolder: string;
+	/** Keep a task-note's parent/depth/path frontmatter in sync when the task is moved. */
+	updateTaskNoteFrontmatter: boolean;
 }
 
 export const DEFAULT_SETTINGS: TaskTreeSettings = {
@@ -38,6 +40,7 @@ export const DEFAULT_SETTINGS: TaskTreeSettings = {
 	showBoardStats: false,
 	taskNoteFolder: "",
 	newBoardFolder: "",
+	updateTaskNoteFrontmatter: true,
 };
 
 /** The indentation unit used when the plugin writes moved or new lines. */
@@ -199,6 +202,16 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 						this.plugin.settings.taskNoteFolder = v.replace(/^\/+|\/+$/g, "").trim();
 						await this.plugin.saveSettings();
 					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Sync task-note frontmatter on move")
+			.setDesc("When a task is moved, update its note's parent / depth / path frontmatter to match its new place.")
+			.addToggle((t) =>
+				t.setValue(this.plugin.settings.updateTaskNoteFrontmatter).onChange(async (v) => {
+					this.plugin.settings.updateTaskNoteFrontmatter = v;
+					await this.plugin.saveSettings();
+				}),
 			);
 	}
 

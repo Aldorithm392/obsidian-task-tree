@@ -1,7 +1,7 @@
 import { TFile } from "obsidian";
 import type TaskTreePlugin from "./main.ts";
 import type { ColumnDef, RollupOptions, TaskNode } from "./model/types.ts";
-import { buildTree } from "./model/parser.ts";
+import { buildTree, flatten } from "./model/parser.ts";
 import { computeRollup } from "./model/rollup.ts";
 import { markBlockedPaths } from "./model/insights.ts";
 import { columnsFromFrontmatter } from "./model/okf.ts";
@@ -30,6 +30,8 @@ export interface BoardModel {
 	rollupOpts: RollupOptions;
 	/** First body line (after the YAML frontmatter). */
 	bodyStart: number;
+	/** The indentation this file actually uses for one level — detected, so edits match the file, not the settings. */
+	indentUnit: string;
 }
 
 export async function loadBoard(plugin: TaskTreePlugin, file: TFile): Promise<BoardModel> {
@@ -57,7 +59,13 @@ export async function loadBoard(plugin: TaskTreePlugin, file: TFile): Promise<Bo
 	computeRollup(roots, rollupOpts);
 	markBlockedPaths(roots);
 
-	return { file, lines, roots, columns, rollupOpts, bodyStart: frontmatterEndLine(lines) };
+	// One depth-1 node's leading whitespace IS one indentation level in this file.
+	// Use it so moves/inserts match the file's own style (tabs vs N spaces), not the
+	// global setting — a mismatch silently corrupts nesting when re-indenting.
+	const oneLevel = flatten(roots).find((n) => n.depth === 1 && n.indentText.length > 0);
+	const indentUnit = oneLevel ? oneLevel.indentText : getIndentUnit(settings);
+
+	return { file, lines, roots, columns, rollupOpts, bodyStart: frontmatterEndLine(lines), indentUnit };
 }
 
 /** Assign a stable ^id to every task that lacks one. Returns true if it wrote. */
@@ -109,8 +117,12 @@ export async function moveNode(
 	plugin: TaskTreePlugin,
 	file: TFile,
 	opts: MoveSubtreeOptions,
+	movedId?: string,
 ): Promise<void> {
 	await plugin.app.vault.process(file, (d) => moveSubtreeInText(d, opts));
+	// The moved subtree's position changed → its task-notes' frontmatter is now stale.
+	// Queue a resync that runs once the board's metadata cache reflects the new tree.
+	if (movedId) plugin.queueNoteSync(file.path, movedId);
 	await touch(plugin, file);
 }
 
@@ -118,26 +130,26 @@ export async function moveNode(
 
 const NEW_TASK_TEXT = "New task";
 
-export async function addChildTask(plugin: TaskTreePlugin, file: TFile, parent: TaskNode): Promise<void> {
-	const indent = parent.indentText + getIndentUnit(plugin.settings);
-	await plugin.app.vault.process(file, (d) =>
+export async function addChildTask(plugin: TaskTreePlugin, model: BoardModel, parent: TaskNode): Promise<void> {
+	const indent = parent.indentText + model.indentUnit; // one more level, in the file's own style
+	await plugin.app.vault.process(model.file, (d) =>
 		insertTaskInText(d, parent.lastDescLine, indent, NEW_TASK_TEXT),
 	);
-	await touch(plugin, file);
+	await touch(plugin, model.file);
 }
 
-export async function addSiblingTask(plugin: TaskTreePlugin, file: TFile, node: TaskNode): Promise<void> {
-	await plugin.app.vault.process(file, (d) =>
+export async function addSiblingTask(plugin: TaskTreePlugin, model: BoardModel, node: TaskNode): Promise<void> {
+	await plugin.app.vault.process(model.file, (d) =>
 		insertTaskInText(d, node.lastDescLine, node.indentText, NEW_TASK_TEXT),
 	);
-	await touch(plugin, file);
+	await touch(plugin, model.file);
 }
 
-export async function addRootTask(plugin: TaskTreePlugin, file: TFile, model: BoardModel): Promise<void> {
+export async function addRootTask(plugin: TaskTreePlugin, model: BoardModel): Promise<void> {
 	const lastRoot = model.roots[model.roots.length - 1];
 	const after = lastRoot ? lastRoot.lastDescLine : model.bodyStart - 1;
-	await plugin.app.vault.process(file, (d) => insertTaskInText(d, after, "", NEW_TASK_TEXT));
-	await touch(plugin, file);
+	await plugin.app.vault.process(model.file, (d) => insertTaskInText(d, after, "", NEW_TASK_TEXT));
+	await touch(plugin, model.file);
 }
 
 export async function deleteTask(plugin: TaskTreePlugin, file: TFile, node: TaskNode): Promise<void> {
@@ -297,6 +309,71 @@ export async function openOrCreateTaskNote(
 	await app.vault.process(model.file, (d) => setTaskTextInText(d, node.line, `${node.text} [[${name}]]`));
 	await touch(plugin, model.file);
 	await app.workspace.getLeaf("tab").openFile(created);
+}
+
+/** A task's human title: its line text with any [[wikilink]] removed and whitespace collapsed. */
+function stripLinks(text: string): string {
+	return text.replace(/\[\[[^\]]*\]\]/g, "").replace(/\s+/g, " ").trim();
+}
+
+/** The task-note a task links to — but only if it is actually one of our task-notes. */
+function resolveTaskNote(plugin: TaskTreePlugin, sourcePath: string, node: TaskNode): TFile | null {
+	const m = WIKILINK_RE.exec(node.text);
+	if (!m || !m[1]) return null;
+	const dest = plugin.app.metadataCache.getFirstLinkpathDest(m[1].trim(), sourcePath);
+	if (!(dest instanceof TFile)) return null;
+	const type = plugin.app.metadataCache.getFileCache(dest)?.frontmatter?.["type"];
+	return type === "task-note" ? dest : null;
+}
+
+function nodeMeta(node: TaskNode, byId: Map<string, TaskNode>): TaskNoteMeta {
+	const path: string[] = [];
+	let pid = node.parentId;
+	let guard = 0;
+	while (pid && guard++ < 50) {
+		const p = byId.get(pid);
+		if (!p) break;
+		path.unshift(p.text);
+		pid = p.parentId;
+	}
+	const parent = node.parentId ? byId.get(node.parentId) : undefined;
+	return { depth: node.depth, path, parentText: parent ? parent.text : null };
+}
+
+/**
+ * After a structural move, refresh the self-describing frontmatter (parent / depth /
+ * distance_to_main / path) of every task-note inside the moved subtree, so an agent
+ * reading the note still sees where the task sits. Runs on fresh, post-move data.
+ */
+export async function syncTaskNotesForMove(
+	plugin: TaskTreePlugin,
+	file: TFile,
+	movedIds: string[],
+): Promise<void> {
+	if (!plugin.settings.updateTaskNoteFrontmatter) return;
+	const model = await loadBoard(plugin, file);
+	const byId = new Map(flatten(model.roots).map((n) => [n.id, n]));
+
+	const subtree = new Map<string, TaskNode>();
+	for (const id of movedIds) {
+		const node = byId.get(id);
+		if (!node) continue;
+		for (const n of flatten([node])) subtree.set(n.id, n);
+	}
+
+	for (const n of subtree.values()) {
+		if (!n.isTask) continue;
+		const note = resolveTaskNote(plugin, file.path, n);
+		if (!note) continue;
+		const meta = nodeMeta(n, byId);
+		const title = stripLinks(n.text) || note.basename;
+		await plugin.app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
+			fm["parent"] = meta.parentText ? stripLinks(meta.parentText) : "(root)";
+			fm["depth"] = meta.depth;
+			fm["distance_to_main"] = meta.depth;
+			fm["path"] = [...meta.path.map(stripLinks), title].join(" / ");
+		});
+	}
 }
 
 async function touch(plugin: TaskTreePlugin, file: TFile): Promise<void> {

@@ -154,7 +154,7 @@ export abstract class TaskTreeView extends ItemView {
 		const add = actions.createEl("button", { cls: "tt-btn", attr: { "aria-label": "Add a task" } });
 		setIcon(add, "plus");
 		add.createSpan({ text: "Add task" });
-		this.registerDomEvent(add, "click", () => void addRootTask(this.plugin, model.file, model));
+		this.registerDomEvent(add, "click", () => void addRootTask(this.plugin, model));
 		const swap = actions.createEl("button", { cls: "tt-btn", attr: { "aria-label": "Open the other view" } });
 		setIcon(swap, this.otherViewType() === VIEW_TYPE_TREE ? "list-tree" : "layout-dashboard");
 		swap.createSpan({ text: this.otherViewType() === VIEW_TYPE_TREE ? "Tree" : "Kanban" });
@@ -248,7 +248,7 @@ export abstract class TaskTreeView extends ItemView {
 		const add = row.createEl("button", { cls: "tt-btn", attr: { "aria-label": "Add a task" } });
 		setIcon(add, "plus");
 		add.createSpan({ text: "Add task" });
-		this.registerDomEvent(add, "click", () => void addRootTask(this.plugin, model.file, model));
+		this.registerDomEvent(add, "click", () => void addRootTask(this.plugin, model));
 
 		const tasks = flatten(model.roots).filter((n) => n.isTask);
 		const stats = head.createDiv({ cls: "tt-dash-stats" });

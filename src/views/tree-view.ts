@@ -16,7 +16,6 @@ import {
 } from "../board-controller.ts";
 import { flatten } from "../model/parser.ts";
 import { computeSummary } from "../model/insights.ts";
-import { getIndentUnit } from "../settings.ts";
 import type { TaskNode, TreeLayout } from "../model/types.ts";
 import type TaskTreePlugin from "../main.ts";
 import { createOverrideBadge, createProgressBadge, createStatusChip, placementColumn } from "./card.ts";
@@ -236,7 +235,7 @@ export class TreeView extends TaskTreeView {
 		setIcon(addBtn, "plus");
 		this.registerDomEvent(addBtn, "click", (e) => {
 			e.stopPropagation();
-			void addChildTask(this.plugin, model.file, node);
+			void addChildTask(this.plugin, model, node);
 		});
 		const delBtn = meta.createSpan({ cls: "tt-row-btn tt-del-btn", attr: { "aria-label": "Delete task" } });
 		setIcon(delBtn, "trash-2");
@@ -358,9 +357,9 @@ export class TreeView extends TaskTreeView {
 			insertAfter,
 			oldDepth: dragged.depth,
 			newDepth: 0,
-			indentUnit: getIndentUnit(this.plugin.settings),
+			indentUnit: model.indentUnit,
 			bodyStart: model.bodyStart,
-		});
+		}, dragged.id);
 	}
 
 	private renderDiagramNode(parent: HTMLElement, node: TaskNode, model: BoardModel): void {
@@ -567,9 +566,9 @@ export class TreeView extends TaskTreeView {
 			insertAfter: prev.lastDescLine,
 			oldDepth: node.depth,
 			newDepth: prev.depth + 1,
-			indentUnit: getIndentUnit(this.plugin.settings),
+			indentUnit: model.indentUnit,
 			bodyStart: model.bodyStart,
-		});
+		}, node.id);
 	}
 
 	private async outdent(node: TaskNode, model: BoardModel): Promise<void> {
@@ -582,9 +581,9 @@ export class TreeView extends TaskTreeView {
 			insertAfter: parent.lastDescLine,
 			oldDepth: node.depth,
 			newDepth: parent.depth,
-			indentUnit: getIndentUnit(this.plugin.settings),
+			indentUnit: model.indentUnit,
 			bodyStart: model.bodyStart,
-		});
+		}, node.id);
 	}
 
 	private parentLineOf(node: TaskNode, model: BoardModel): number {
@@ -604,9 +603,9 @@ export class TreeView extends TaskTreeView {
 			insertAfter,
 			oldDepth: node.depth,
 			newDepth: node.depth,
-			indentUnit: getIndentUnit(this.plugin.settings),
+			indentUnit: model.indentUnit,
 			bodyStart: model.bodyStart,
-		});
+		}, node.id);
 	}
 
 	private async moveDown(node: TaskNode, model: BoardModel): Promise<void> {
@@ -620,9 +619,9 @@ export class TreeView extends TaskTreeView {
 			insertAfter: next.lastDescLine,
 			oldDepth: node.depth,
 			newDepth: node.depth,
-			indentUnit: getIndentUnit(this.plugin.settings),
+			indentUnit: model.indentUnit,
 			bodyStart: model.bodyStart,
-		});
+		}, node.id);
 	}
 
 	/** Move a node to be the last of its current siblings (reliable "drop at the end"). */
@@ -636,9 +635,9 @@ export class TreeView extends TaskTreeView {
 			insertAfter: last.lastDescLine,
 			oldDepth: node.depth,
 			newDepth: node.depth,
-			indentUnit: getIndentUnit(this.plugin.settings),
+			indentUnit: model.indentUnit,
 			bodyStart: model.bodyStart,
-		});
+		}, node.id);
 	}
 
 	private subtreeIds(node: TaskNode): Set<string> {
@@ -756,9 +755,9 @@ export class TreeView extends TaskTreeView {
 			insertAfter,
 			oldDepth: dragged.depth,
 			newDepth,
-			indentUnit: getIndentUnit(this.plugin.settings),
+			indentUnit: model.indentUnit,
 			bodyStart: model.bodyStart,
-		});
+		}, dragged.id);
 	}
 
 	private nodeMenu(e: MouseEvent, node: TaskNode, model: BoardModel): void {
@@ -822,10 +821,10 @@ export class TreeView extends TaskTreeView {
 		}
 		menu.addSeparator();
 		menu.addItem((i) =>
-			i.setTitle("Add subtask").setIcon("plus").onClick(() => void addChildTask(this.plugin, model.file, node)),
+			i.setTitle("Add subtask").setIcon("plus").onClick(() => void addChildTask(this.plugin, model, node)),
 		);
 		menu.addItem((i) =>
-			i.setTitle("Add task below").setIcon("plus").onClick(() => void addSiblingTask(this.plugin, model.file, node)),
+			i.setTitle("Add task below").setIcon("plus").onClick(() => void addSiblingTask(this.plugin, model, node)),
 		);
 		menu.addItem((i) =>
 			i.setTitle("Rename…").setIcon("pencil").onClick(() => void this.renamePrompt(node, model)),

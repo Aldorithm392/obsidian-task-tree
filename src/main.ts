@@ -6,11 +6,13 @@ import { DashboardView } from "./views/dashboard-view.ts";
 import { TaskTreeView, VIEW_TYPE_DASHBOARD, VIEW_TYPE_KANBAN, VIEW_TYPE_TREE } from "./views/base-view.ts";
 import { isManagedFrontmatter, MANAGED_TYPE } from "./model/okf.ts";
 import { assignIdsInText } from "./model/writer.ts";
-import { createBoardFile } from "./board-controller.ts";
+import { createBoardFile, syncTaskNotesForMove } from "./board-controller.ts";
 import { promptText } from "./views/modals.ts";
 
 export default class TaskTreePlugin extends Plugin {
 	settings: TaskTreeSettings = DEFAULT_SETTINGS;
+	/** board path -> task ids whose notes need a frontmatter resync once the cache is fresh */
+	private pendingNoteSync = new Map<string, Set<string>>();
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -19,6 +21,18 @@ export default class TaskTreePlugin extends Plugin {
 		this.registerView(VIEW_TYPE_TREE, (leaf) => new TreeView(leaf, this));
 		this.registerView(VIEW_TYPE_DASHBOARD, (leaf) => new DashboardView(leaf, this));
 		this.addSettingTab(new TaskTreeSettingTab(this.app, this));
+
+		// When a moved board's metadata has re-parsed (fresh tree), resync the moved
+		// tasks' note frontmatter. Doing it here — not right after the write — guarantees
+		// loadBoard sees the new positions, not the stale pre-move cache.
+		this.registerEvent(
+			this.app.metadataCache.on("changed", (file) => {
+				const ids = this.pendingNoteSync.get(file.path);
+				if (!ids || ids.size === 0) return;
+				this.pendingNoteSync.delete(file.path);
+				void syncTaskNotesForMove(this, file, [...ids]);
+			}),
+		);
 
 		this.addRibbonIcon("list-tree", "Open Task Tree", () => {
 			void this.openForActive(VIEW_TYPE_TREE);
@@ -63,6 +77,14 @@ export default class TaskTreePlugin extends Plugin {
 			name: "Open a Task Tree board…",
 			callback: () => new BoardPicker(this.app, this).open(),
 		});
+	}
+
+	/** Remember that a moved task's note needs a frontmatter resync on the next cache refresh. */
+	queueNoteSync(filePath: string, movedId: string): void {
+		if (!this.settings.updateTaskNoteFrontmatter) return;
+		const set = this.pendingNoteSync.get(filePath) ?? new Set<string>();
+		set.add(movedId);
+		this.pendingNoteSync.set(filePath, set);
 	}
 
 	private activeMdGuard(checking: boolean, run: () => void): boolean {

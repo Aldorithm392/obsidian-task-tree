@@ -265,6 +265,32 @@ test("re-indent deeper preserves relative structure (4 spaces)", () => {
 	});
 	assert.equal(out, ["- [ ] A", "- [ ] B", "- [ ] A1", "    - [ ] A1a"].join("\n"));
 });
+test("lift a 4-space child to root with the file's own unit lands at column 0", () => {
+	// Regression: moves must re-indent with the FILE's indent unit, not the settings'.
+	const text = ["- [ ] A", "    - [ ] child ^t-abc123", "- [ ] B"].join("\n");
+	const out = moveSubtreeInText(text, {
+		start: 1,
+		end: 1,
+		insertAfter: 2,
+		oldDepth: 1,
+		newDepth: 0,
+		indentUnit: "    ", // the file's real unit — what loadBoard now detects
+	});
+	assert.equal(out, ["- [ ] A", "- [ ] B", "- [ ] child ^t-abc123"].join("\n"));
+});
+test("lifting a space-indented child with a MISMATCHED tab unit fails to strip (why detection matters)", () => {
+	const text = ["- [ ] A", "    - [ ] child", "- [ ] B"].join("\n");
+	const out = moveSubtreeInText(text, {
+		start: 1,
+		end: 1,
+		insertAfter: 2,
+		oldDepth: 1,
+		newDepth: 0,
+		indentUnit: "\t", // wrong unit for a space file — cannot strip the 4 spaces
+	});
+	// The old (buggy) behaviour: the "lifted" line still carries its 4 spaces.
+	assert.equal(out.split("\n")[2], "    - [ ] child");
+});
 test("re-indent with 2-space unit", () => {
 	const text = ["- [ ] A", "  - [ ] A1", "- [ ] B"].join("\n");
 	const out = moveSubtreeInText(text, {
