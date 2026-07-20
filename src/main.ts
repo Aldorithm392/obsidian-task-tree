@@ -18,8 +18,8 @@ export default class TaskTreePlugin extends Plugin {
 		this.registerView(VIEW_TYPE_DASHBOARD, (leaf) => new DashboardView(leaf, this));
 		this.addSettingTab(new TaskTreeSettingTab(this.app, this));
 
-		this.addRibbonIcon("layout-dashboard", "Open Task Tree dashboard", () => {
-			void this.openForActive(VIEW_TYPE_DASHBOARD);
+		this.addRibbonIcon("list-tree", "Open Task Tree", () => {
+			void this.openForActive(VIEW_TYPE_TREE);
 		});
 
 		this.addCommand({

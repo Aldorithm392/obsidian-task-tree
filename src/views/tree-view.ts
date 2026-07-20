@@ -102,7 +102,9 @@ export class TreeView extends TaskTreeView {
 	protected renderBoard(container: HTMLElement, model: BoardModel): void {
 		this.buildToolbar(container, model);
 		this.prepareModel(model);
-		if (!this.fullFocus) this.renderDashboardHeader(container, model, { compact: true });
+		if (!this.fullFocus && this.plugin.settings.showBoardStats) {
+			this.renderDashboardHeader(container, model, { compact: true });
+		}
 		const scroll = container.createDiv({ cls: "tt-tree tt-scroll" });
 		this.renderTreeBody(scroll, model);
 	}

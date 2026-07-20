@@ -30,6 +30,15 @@
 	font-weight: 600;
 	font-size: var(--font-ui-medium);
 }
+.tt-toolbar-title.is-clickable {
+	cursor: pointer;
+	border-radius: var(--radius-s);
+	padding: 2px 6px;
+	margin: -2px -6px;
+}
+.tt-toolbar-title.is-clickable:hover {
+	background: var(--background-modifier-hover);
+}
 .tt-toolbar-actions {
 	display: flex;
 	gap: 6px;

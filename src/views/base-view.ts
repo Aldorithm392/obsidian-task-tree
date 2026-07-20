@@ -129,13 +129,31 @@ export abstract class TaskTreeView extends ItemView {
 
 	protected buildToolbar(container: HTMLElement, model: BoardModel): HTMLElement {
 		const bar = container.createDiv({ cls: "tt-toolbar" });
-		const title = typeof this.app.metadataCache.getFileCache(model.file)?.frontmatter?.title === "string"
-			? String(this.app.metadataCache.getFileCache(model.file)?.frontmatter?.title)
-			: model.file.basename;
-		bar.createDiv({ cls: "tt-toolbar-title", text: title });
+		const title = bar.createDiv({
+			cls: "tt-toolbar-title is-clickable",
+			text: this.boardTitle(model),
+			attr: { "aria-label": "Rename board" },
+		});
+		this.registerDomEvent(title, "click", () => {
+			void (async () => {
+				const name = await promptText(this.app, {
+					title: "Rename board",
+					initial: this.boardTitle(model),
+					cta: "Rename",
+				});
+				if (name) {
+					await renameBoard(this.plugin, model.file, name);
+					this.rerender();
+				}
+			})();
+		});
 
 		const actions = bar.createDiv({ cls: "tt-toolbar-actions" });
 		this.buildToolbarActions(actions, model);
+		const add = actions.createEl("button", { cls: "tt-btn", attr: { "aria-label": "Add a task" } });
+		setIcon(add, "plus");
+		add.createSpan({ text: "Add task" });
+		this.registerDomEvent(add, "click", () => void addRootTask(this.plugin, model.file, model));
 		const swap = actions.createEl("button", { cls: "tt-btn", attr: { "aria-label": "Open the other view" } });
 		setIcon(swap, this.otherViewType() === VIEW_TYPE_TREE ? "list-tree" : "layout-dashboard");
 		swap.createSpan({ text: this.otherViewType() === VIEW_TYPE_TREE ? "Tree" : "Kanban" });

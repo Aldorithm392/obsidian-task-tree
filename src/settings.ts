@@ -16,6 +16,7 @@ export interface TaskTreeSettings {
 	parentAutoSync: boolean;
 	maintainTimestamp: boolean;
 	treeLayout: TreeLayout;
+	showBoardStats: boolean;
 }
 
 export const DEFAULT_SETTINGS: TaskTreeSettings = {
@@ -30,6 +31,7 @@ export const DEFAULT_SETTINGS: TaskTreeSettings = {
 	parentAutoSync: false,
 	maintainTimestamp: false,
 	treeLayout: "list",
+	showBoardStats: false,
 };
 
 /** The indentation unit used when the plugin writes moved or new lines. */
@@ -95,6 +97,16 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
+
+		new Setting(containerEl)
+			.setName("Show the stats bar")
+			.setDesc("Show per-column counts and the blocked indicator above the tree and board. Off keeps the view clean.")
+			.addToggle((t) =>
+				t.setValue(this.plugin.settings.showBoardStats).onChange(async (v) => {
+					this.plugin.settings.showBoardStats = v;
+					await this.plugin.saveSettings();
+				}),
+			);
 
 		new Setting(containerEl).setName("Writing").setHeading();
 

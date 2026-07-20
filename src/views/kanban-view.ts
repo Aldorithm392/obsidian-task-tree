@@ -41,7 +41,7 @@ export class KanbanView extends TaskTreeView {
 		this.buildToolbar(container, model);
 		const tasks = flatten(model.roots).filter((n) => n.isTask);
 		this.byId = new Map(flatten(model.roots).map((n) => [n.id, n]));
-		this.renderDashboardHeader(container, model, { compact: true });
+		if (this.plugin.settings.showBoardStats) this.renderDashboardHeader(container, model, { compact: true });
 
 		const board = container.createDiv({ cls: "tt-kanban tt-scroll" });
 		const lists = new Map<string, HTMLElement>();
