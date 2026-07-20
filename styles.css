@@ -652,11 +652,26 @@ h2.tt-dash-title {
 	transform: scaleX(-1);
 }
 
+/* ---- the project goal apex (= the note) ---- */
+.tt-goal-box {
+	border-color: var(--interactive-accent);
+	border-width: 1.5px;
+	background: var(--background-primary);
+}
+.tt-goal-text {
+	font-weight: 700;
+	cursor: text;
+}
+
 /* ---- columns layout ---- */
 .tt-columns {
 	display: flex;
 	align-items: stretch;
 	height: 100%;
+}
+/* inverted: the goal (first / "note" pane) sits on the right; drilling extends left */
+.tt-columns.is-inverted {
+	flex-direction: row-reverse;
 }
 .tt-column-pane {
 	flex: 0 0 240px;
@@ -664,6 +679,10 @@ h2.tt-dash-title {
 	flex-direction: column;
 	border-right: 1px solid var(--background-modifier-border);
 	max-height: 100%;
+}
+.tt-columns.is-inverted .tt-column-pane {
+	border-right: none;
+	border-left: 1px solid var(--background-modifier-border);
 }
 .tt-column-pane-head {
 	padding: 6px 10px;

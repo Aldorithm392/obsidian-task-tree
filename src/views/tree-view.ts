@@ -15,6 +15,7 @@ import {
 	type TaskNoteMeta,
 } from "../board-controller.ts";
 import { flatten } from "../model/parser.ts";
+import { computeSummary } from "../model/insights.ts";
 import { getIndentUnit } from "../settings.ts";
 import type { TaskNode, TreeLayout } from "../model/types.ts";
 import type TaskTreePlugin from "../main.ts";
@@ -104,7 +105,7 @@ export class TreeView extends TaskTreeView {
 			});
 		}
 
-		if (this.layout === "diagram") {
+		if (this.layout === "diagram" || this.layout === "columns") {
 			const flip = actions.createEl("button", {
 				cls: "tt-layout-btn tt-flip-btn",
 				attr: { "aria-label": "Invert: put the goal on the right, enablers flowing into it" },
@@ -288,7 +289,77 @@ export class TreeView extends TaskTreeView {
 		canvas.dataset.parentId = "";
 		canvas.dataset.parentDepth = "-1";
 		canvas.dataset.parentLine = String(model.bodyStart - 1);
-		for (const node of roots) this.renderDiagramNode(canvas, node, model);
+
+		// The apex of the tree is the project itself — the note. Its top-level tasks
+		// are what enable it. Inverted, the goal sits on the right and the enablers
+		// flow into it. While focused on a subtree, that node is the apex instead.
+		if (this.focusId) {
+			for (const node of roots) this.renderDiagramNode(canvas, node, model);
+			return;
+		}
+		const gnode = canvas.createDiv({ cls: "tt-dnode" });
+		const gbox = gnode.createDiv({ cls: "tt-dbox tt-goal-box" });
+		this.buildGoalContent(gbox, model);
+		if (roots.length > 0) {
+			const kids = gnode.createDiv({ cls: "tt-dchildren" });
+			for (const node of roots) this.renderDiagramNode(kids, node, model);
+		}
+	}
+
+	/** The project apex (= the note): its title, overall progress, and a drop target for "lift to top level". */
+	private buildGoalContent(box: HTMLElement, model: BoardModel): void {
+		box.addClass("tt-node-body");
+		const label = box.createSpan({ cls: "tt-node-text tt-goal-text", text: this.boardTitle(model) });
+		this.registerDomEvent(label, "click", (e) => {
+			e.stopPropagation();
+			void this.promptRenameBoard(model);
+		});
+
+		const summary = computeSummary(model.roots);
+		if (summary.total > 0) {
+			const meta = box.createDiv({ cls: "tt-node-meta" });
+			const wrap = meta.createSpan({ cls: "tt-progress" });
+			wrap.createSpan({ cls: "tt-progress-text", text: `${summary.done}/${summary.total}` });
+			const bar = wrap.createDiv({ cls: "tt-progress-bar" });
+			const fill = bar.createDiv({ cls: "tt-progress-fill" });
+			fill.style.width = Math.round((summary.done / summary.total) * 100) + "%";
+		}
+
+		// Drop a task here to lift it back to the project (top) level.
+		this.registerDomEvent(box, "dragover", (e: DragEvent) => {
+			if (!this.draggingId) return;
+			e.preventDefault();
+			if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+			box.removeClass(...TreeView.DROP_HINTS);
+			box.addClass("tt-drop-inside");
+		});
+		this.registerDomEvent(box, "dragleave", () => box.removeClass(...TreeView.DROP_HINTS));
+		this.registerDomEvent(box, "drop", (e: DragEvent) => {
+			e.preventDefault();
+			e.stopPropagation();
+			const id = this.draggingId;
+			box.removeClass(...TreeView.DROP_HINTS);
+			if (id) void this.applyDropToRoot(id, model);
+		});
+	}
+
+	/** Move a dragged task to be a top-level task (child of the project goal), appended last. */
+	private async applyDropToRoot(draggedId: string, model: BoardModel): Promise<void> {
+		const dragged = this.byId.get(draggedId);
+		if (!dragged) return;
+		const roots = model.roots;
+		const last = roots[roots.length - 1];
+		if (dragged.depth === 0 && last && last.id === dragged.id) return; // already the last root
+		const insertAfter = last && last.id !== dragged.id ? last.lastDescLine : model.bodyStart - 1;
+		await moveNode(this.plugin, model.file, {
+			start: dragged.line,
+			end: dragged.lastDescLine,
+			insertAfter,
+			oldDepth: dragged.depth,
+			newDepth: 0,
+			indentUnit: getIndentUnit(this.plugin.settings),
+			bodyStart: model.bodyStart,
+		});
 	}
 
 	private renderDiagramNode(parent: HTMLElement, node: TaskNode, model: BoardModel): void {
@@ -324,7 +395,8 @@ export class TreeView extends TaskTreeView {
 		this.columnPath = pruned;
 
 		const wrap = scroll.createDiv({ cls: "tt-columns" });
-		this.renderColumnPane(wrap, roots, "Board", 0, model);
+		if (this.inverted) wrap.addClass("is-inverted");
+		this.renderColumnPane(wrap, roots, this.boardTitle(model), 0, model);
 
 		for (let i = 0; i < this.columnPath.length; i++) {
 			const parentId = this.columnPath[i];

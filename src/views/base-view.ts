@@ -147,19 +147,7 @@ export abstract class TaskTreeView extends ItemView {
 			text: this.boardTitle(model),
 			attr: { "aria-label": "Rename board" },
 		});
-		this.registerDomEvent(title, "click", () => {
-			void (async () => {
-				const name = await promptText(this.app, {
-					title: "Rename board",
-					initial: this.boardTitle(model),
-					cta: "Rename",
-				});
-				if (name) {
-					await renameBoard(this.plugin, model.file, name);
-					this.rerender();
-				}
-			})();
-		});
+		this.registerDomEvent(title, "click", () => void this.promptRenameBoard(model));
 
 		const actions = bar.createDiv({ cls: "tt-toolbar-actions" });
 		this.buildToolbarActions(actions, model);
@@ -233,6 +221,19 @@ export abstract class TaskTreeView extends ItemView {
 		return typeof t === "string" && t.length > 0 ? t : model.file.basename;
 	}
 
+	/** Prompt for a new board name (the project goal) and write it to the frontmatter title. */
+	protected async promptRenameBoard(model: BoardModel): Promise<void> {
+		const name = await promptText(this.app, {
+			title: "Rename board",
+			initial: this.boardTitle(model),
+			cta: "Rename",
+		});
+		if (name) {
+			await renameBoard(this.plugin, model.file, name);
+			this.rerender();
+		}
+	}
+
 	/** The dashboard strip: board title (rename on click), add-task, per-column counts, blocked flag. */
 	protected renderDashboardHeader(container: HTMLElement, model: BoardModel, opts: { compact?: boolean } = {}): void {
 		const head = container.createDiv({ cls: "tt-dash-header" });
@@ -243,19 +244,7 @@ export abstract class TaskTreeView extends ItemView {
 			text: this.boardTitle(model),
 			attr: { "aria-label": "Rename board" },
 		});
-		this.registerDomEvent(title, "click", () => {
-			void (async () => {
-				const name = await promptText(this.app, {
-					title: "Rename board",
-					initial: this.boardTitle(model),
-					cta: "Rename",
-				});
-				if (name) {
-					await renameBoard(this.plugin, model.file, name);
-					this.rerender();
-				}
-			})();
-		});
+		this.registerDomEvent(title, "click", () => void this.promptRenameBoard(model));
 		const add = row.createEl("button", { cls: "tt-btn", attr: { "aria-label": "Add a task" } });
 		setIcon(add, "plus");
 		add.createSpan({ text: "Add task" });
