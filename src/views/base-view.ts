@@ -8,7 +8,15 @@ import {
 	type WorkspaceLeaf,
 } from "obsidian";
 import type TaskTreePlugin from "../main.ts";
-import { addRootTask, ensureIds, loadBoard, renameBoard, type BoardModel } from "../board-controller.ts";
+import {
+	addRootTask,
+	ensureIds,
+	loadBoard,
+	renameBoard,
+	renameTask,
+	type BoardModel,
+} from "../board-controller.ts";
+import type { TaskNode } from "../model/types.ts";
 import { isManagedFrontmatter, MANAGED_TYPE } from "../model/okf.ts";
 import { collectBlockers, collectNextUp, computeSummary, type Insight } from "../model/insights.ts";
 import { flatten } from "../model/parser.ts";
@@ -26,12 +34,17 @@ export const VIEW_TYPE_DASHBOARD = "task-tree-dashboard";
 export abstract class TaskTreeView extends ItemView {
 	plugin: TaskTreePlugin;
 	filePath: string | null = null;
+	/** True while an inline edit input is open, so a stray re-render can't destroy it. */
+	protected editing = false;
 	protected readonly rerender: () => void;
 
 	constructor(leaf: WorkspaceLeaf, plugin: TaskTreePlugin) {
 		super(leaf);
 		this.plugin = plugin;
-		this.rerender = debounce(() => void this.render(), 150, true);
+		this.rerender = debounce(() => {
+			if (this.editing) return;
+			void this.render();
+		}, 150, true);
 	}
 
 	getState(): Record<string, unknown> {
@@ -171,6 +184,48 @@ export abstract class TaskTreeView extends ItemView {
 	protected openAtLine(model: BoardModel, line: number): void {
 		const leaf = this.app.workspace.getLeaf("tab");
 		void leaf.openFile(model.file, { eState: { line } });
+	}
+
+	/** Edit a task's text in place: swap the text span for an input; Enter/blur saves, Esc cancels. */
+	protected startInlineEdit(textEl: HTMLElement, node: TaskNode, model: BoardModel): void {
+		if (this.editing) return;
+		const parent = textEl.parentElement;
+		if (!parent) return;
+		this.editing = true;
+
+		const input = parent.createEl("input", { cls: "tt-inline-input" });
+		input.type = "text";
+		input.value = node.text;
+		parent.insertBefore(input, textEl);
+		textEl.remove();
+		input.focus();
+		input.select();
+
+		let settled = false;
+		const finish = (commit: boolean): void => {
+			if (settled) return;
+			settled = true;
+			this.editing = false;
+			if (commit) {
+				const value = input.value.trim();
+				if (value.length > 0 && value !== node.text) {
+					void renameTask(this.plugin, model.file, node, value);
+					return; // the write triggers a fresh re-render
+				}
+			}
+			this.rerender();
+		};
+
+		this.registerDomEvent(input, "keydown", (e) => {
+			if (e.key === "Enter") {
+				e.preventDefault();
+				finish(true);
+			} else if (e.key === "Escape") {
+				e.preventDefault();
+				finish(false);
+			}
+		});
+		this.registerDomEvent(input, "blur", () => finish(true));
 	}
 
 	protected boardTitle(model: BoardModel): string {

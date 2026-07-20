@@ -22,7 +22,7 @@ import { confirmModal, promptText } from "./modals.ts";
 
 interface RowOptions {
 	toggle: "collapse" | "drill" | "none";
-	onActivate: () => void;
+	editTrigger: "click" | "dblclick";
 }
 
 export class TreeView extends TaskTreeView {
@@ -175,13 +175,9 @@ export class TreeView extends TaskTreeView {
 
 		const text = host.createSpan({ cls: "tt-node-text", text: node.text || "(untitled)" });
 		if (node.effectiveRole === "done") text.addClass("tt-done");
-		this.registerDomEvent(text, "click", (e) => {
+		this.registerDomEvent(text, opts.editTrigger, (e) => {
 			e.stopPropagation();
-			opts.onActivate();
-		});
-		this.registerDomEvent(text, "dblclick", (e) => {
-			e.stopPropagation();
-			void this.renamePrompt(node, model);
+			this.startInlineEdit(text, node, model);
 		});
 
 		const meta = host.createDiv({ cls: "tt-node-meta" });
@@ -244,7 +240,7 @@ export class TreeView extends TaskTreeView {
 		setIcon(grip, "grip-vertical");
 		this.buildRowContent(row, node, model, {
 			toggle: "collapse",
-			onActivate: () => this.openAtLine(model, node.line),
+			editTrigger: "click",
 		});
 
 		if (node.children.length > 0 && !this.collapsed.has(node.id)) {
@@ -270,7 +266,7 @@ export class TreeView extends TaskTreeView {
 		box.setAttribute("data-task", node.statusChar);
 		this.buildRowContent(box, node, model, {
 			toggle: "collapse",
-			onActivate: () => this.openAtLine(model, node.line),
+			editTrigger: "click",
 		});
 		if (node.children.length > 0 && !this.collapsed.has(node.id)) {
 			const kids = dnode.createDiv({ cls: "tt-dchildren" });
@@ -319,7 +315,7 @@ export class TreeView extends TaskTreeView {
 			if (node.id === selectedId) item.addClass("is-selected");
 			this.buildRowContent(item, node, model, {
 				toggle: "drill",
-				onActivate: () => this.selectColumn(node, colIndex),
+				editTrigger: "dblclick",
 			});
 			this.registerDomEvent(item, "click", () => this.selectColumn(node, colIndex));
 		}

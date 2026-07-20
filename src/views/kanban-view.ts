@@ -87,7 +87,11 @@ export class KanbanView extends TaskTreeView {
 
 		breadcrumb(card, this.parentChain(node));
 		const main = card.createDiv({ cls: "tt-card-main" });
-		main.createSpan({ cls: "tt-card-text", text: node.text || "(untitled)" });
+		const textEl = main.createSpan({ cls: "tt-card-text", text: node.text || "(untitled)" });
+		this.registerDomEvent(textEl, "click", (e) => {
+			e.stopPropagation();
+			this.startInlineEdit(textEl, node, model);
+		});
 
 		const meta = card.createDiv({ cls: "tt-card-meta" });
 		if (node.override) createOverrideBadge(meta, node.override);
@@ -104,7 +108,6 @@ export class KanbanView extends TaskTreeView {
 			void addChildTask(this.plugin, model.file, node);
 		});
 
-		this.registerDomEvent(card, "click", () => this.openAtLine(model, node.line));
 		this.registerDomEvent(card, "contextmenu", (e) => {
 			e.preventDefault();
 			this.cardMenu(e, node, model);
