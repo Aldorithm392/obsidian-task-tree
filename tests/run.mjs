@@ -277,17 +277,41 @@ test("re-indent with 2-space unit", () => {
 	});
 	assert.equal(out, ["- [ ] A", "- [ ] B", "  - [ ] A1"].join("\n"));
 });
-test("refuses to drop a subtree inside itself", () => {
-	const text = ["- [ ] A", "\t- [ ] A1"].join("\n");
+test("refuses to drop a subtree strictly inside itself", () => {
+	const text = ["- [ ] A", "\t- [ ] A1", "\t- [ ] A2"].join("\n");
 	const out = moveSubtreeInText(text, {
 		start: 0,
-		end: 1,
-		insertAfter: 1,
+		end: 2,
+		insertAfter: 1, // strictly between start and end
 		oldDepth: 0,
 		newDepth: 0,
 		indentUnit: "\t",
 	});
 	assert.equal(out, text);
+});
+test("outdent the last child (insertAfter === end) reinserts in place, shallower", () => {
+	const text = ["- [ ] A", "\t- [ ] B", "\t- [ ] C"].join("\n");
+	const out = moveSubtreeInText(text, {
+		start: 2,
+		end: 2,
+		insertAfter: 2, // == end: parent's lastDescLine when C is the tail
+		oldDepth: 1,
+		newDepth: 0,
+		indentUnit: "\t",
+	});
+	assert.equal(out, ["- [ ] A", "\t- [ ] B", "- [ ] C"].join("\n"));
+});
+test("re-indent preserves non-task continuation lines", () => {
+	const text = ["- [ ] A", "\t- [ ] B", "\t\tnote under B", "- [ ] C"].join("\n");
+	const out = moveSubtreeInText(text, {
+		start: 1,
+		end: 2,
+		insertAfter: 3,
+		oldDepth: 1,
+		newDepth: 0,
+		indentUnit: "\t",
+	});
+	assert.equal(out, ["- [ ] A", "- [ ] C", "- [ ] B", "\tnote under B"].join("\n"));
 });
 
 // ---- ids ---------------------------------------------------------------------

@@ -128,7 +128,9 @@ export function moveSubtreeInText(text: string, opts: MoveSubtreeOptions): strin
 	const { start, end, insertAfter, oldDepth, newDepth, indentUnit } = opts;
 	const lines = text.split("\n");
 	if (start < 0 || end >= lines.length || start > end) return text;
-	if (insertAfter >= start && insertAfter <= end) return text; // cannot drop inside itself
+	// Refuse dropping strictly inside the moved block. insertAfter === end is the
+	// legitimate "reinsert in place" case (e.g. outdenting the last child), so allow it.
+	if (insertAfter >= start && insertAfter < end) return text;
 
 	const delta = newDepth - oldDepth;
 	const block = lines.slice(start, end + 1).map((l) => reindent(l, delta, indentUnit));
@@ -149,15 +151,18 @@ export function moveSubtreeInText(text: string, opts: MoveSubtreeOptions): strin
 	return result.join("\n");
 }
 
+// Shift a line's indentation by `delta` whole units, preserving its exact relative
+// indentation (so nested children and non-task continuation lines keep their shape).
 function reindent(line: string, delta: number, unit: string): string {
 	if (delta === 0) return line;
-	const leadingWsLen = line.length - line.replace(/^\s+/, "").length;
-	const content = line.slice(leadingWsLen);
-	if (content === "") return line; // blank line: leave untouched
-	const unitLen = unit.length || 1;
-	const level = Math.round(leadingWsLen / unitLen);
-	const newLevel = Math.max(0, level + delta);
-	return unit.repeat(newLevel) + content;
+	if (line.replace(/^\s+/, "") === "") return line; // blank line: leave untouched
+	if (delta > 0) return unit.repeat(delta) + line;
+	let out = line;
+	for (let i = 0; i < -delta; i++) {
+		if (out.startsWith(unit)) out = out.slice(unit.length);
+		else break;
+	}
+	return out;
 }
 
 // ---- task CRUD (dashboard editing) ------------------------------------------

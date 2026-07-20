@@ -350,6 +350,27 @@
 	align-items: center;
 	gap: 6px;
 }
+.tt-drag-handle {
+	display: inline-flex;
+	flex: 0 0 auto;
+	color: var(--text-faint);
+	cursor: grab;
+	opacity: 0;
+	transition: opacity 80ms ease;
+}
+.tt-node-body:hover .tt-drag-handle {
+	opacity: 0.55;
+}
+.tt-drag-handle:hover {
+	opacity: 1;
+}
+.tt-drag-handle:active {
+	cursor: grabbing;
+}
+.tt-drag-handle svg {
+	width: 14px;
+	height: 14px;
+}
 .tt-toggle-drill {
 	color: var(--text-faint);
 }

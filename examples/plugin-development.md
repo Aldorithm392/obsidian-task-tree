@@ -1,32 +1,27 @@
 ---
 type: task-tree
 title: Task Tree — Development
-description: The plugin's own roadmap, tracked in the plugin (dogfooding).
+description: The plugin's own roadmap, tracked in the plugin (dogfooding). Reset on 2026-07-19.
 tags: [meta, dogfood]
 ---
 
-- [x] MVP (v0.1)
-	- [x] Markdown format & parser
-		- [x] Parse nested checklist tasks
-		- [x] Roll-up parent state from children
-		- [x] Stable block ids
-	- [x] Views
-		- [x] Kanban board (drag = change state)
-		- [x] Tree (collapse / focus)
-	- [x] Write-back (status, override, move)
-	- [x] Pure-logic tests
-- [/] v0.2 — layouts, editing
-	- [x] Three tree layouts
-		- [x] List (vertical)
-		- [x] Diagram (horizontal)
-		- [x] Columns (drill-down)
-	- [x] Full-focus view
-	- [x] Task CRUD from the UI
-	- [/] Dashboard (simplified to opt-in)
-- [/] v0.3 — human-first
+- [x] Shipped
+	- [x] Format & parser (roll-up, override, block ids)
+	- [x] Views — Kanban + Tree
+	- [x] Three layouts (list / diagram / columns) + full-focus
+	- [x] Editing — add / delete / rename / tag, inline + / −
+	- [x] Drag (grip) + Move up / down / Indent / Outdent
 	- [x] Clean default view (stats opt-in)
-	- [/] Inline + / − to edit from any view
-	- [ ] "A task can also be a note" (documentation link)
+	- [x] Fix: outdent last child was a no-op
+- [/] Now — edit everything from the view
+	- [ ] Inline text editing in every view (write on tasks, never open the file)
+	- [ ] The plugin creates & manages files
+		- [ ] "New board from zero" command
+		- [ ] Default folder setting (where new notes go)
+		- [ ] YAML title = note title (rename the board renames the file)
+- [ ] Next — task = note
+	- [ ] Open each task as its own note ([[link]]) for progress / status / code
+- [ ] Advanced — connect tasks to each other (dependencies / graph)
 - [ ] Ship
 	- [ ] Fill author / GitHub handle in manifest.json
 	- [ ] Manual QA pass in a real vault

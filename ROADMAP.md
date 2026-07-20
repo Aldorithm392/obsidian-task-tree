@@ -39,10 +39,24 @@ migration, a `tt_version` key can be introduced then, opt-in.
 - **Three-layer model made explicit:** the Markdown note is the shared structure; the plugin is the
   human editing/visualization layer; an LLM reads the raw file. Dogfooded via `examples/plugin-development.md`.
 
-## Next
+## Next (the reset — full vision in [docs/00_VISION.md](docs/00_VISION.md))
 
-- [ ] "A task can also be a note" — right-click a task → open/create its documentation note (`[[link]]`).
-- [ ] Manual QA pass in a real vault; polish drag affordances and empty states.
+**Now — edit everything from the view; the plugin owns the files**
+- [ ] Inline text editing in every view (list / diagram / columns / kanban) — click a task and write on
+  it; Enter saves, Esc cancels; never jump to the raw file.
+- [ ] "New board from zero" command + a default-folder setting; YAML `title` = note title (renaming the
+  board renames the file). The human never touches files.
+
+**Next — task = note**
+- [ ] Open any task as its own note (`[[link]]`) for progress / status / code, in the configured folder.
+
+**Advanced (deliberately later)**
+- [ ] Connect tasks to each other (dependencies / relationships) — the real graph, written as Markdown
+  links so agents read it too.
+
+**Ship**
+- [ ] Fill author / GitHub handle in `manifest.json`; manual QA in a real vault; tag a release; submit to
+  community plugins.
 - [ ] Persist collapse/focus state per board across reloads.
 - [ ] Render card/​node text as Markdown (links, tags) via `MarkdownRenderer`.
 - [ ] `index.md` / `log.md` bundle commands (helpers already exist in `okf.ts`).

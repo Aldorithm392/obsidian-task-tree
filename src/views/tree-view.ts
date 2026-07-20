@@ -240,6 +240,8 @@ export class TreeView extends TaskTreeView {
 		li.setAttribute("data-task", node.statusChar);
 
 		const row = li.createDiv({ cls: "tt-row" });
+		const grip = row.createSpan({ cls: "tt-drag-handle", attr: { "aria-label": "Drag to move" } });
+		setIcon(grip, "grip-vertical");
 		this.buildRowContent(row, node, model, {
 			toggle: "collapse",
 			onActivate: () => this.openAtLine(model, node.line),
@@ -435,6 +437,44 @@ export class TreeView extends TaskTreeView {
 		});
 	}
 
+	private parentLineOf(node: TaskNode, model: BoardModel): number {
+		if (!node.parentId) return model.bodyStart - 1;
+		return this.byId.get(node.parentId)?.line ?? model.bodyStart - 1;
+	}
+
+	private async moveUp(node: TaskNode, model: BoardModel): Promise<void> {
+		const sibs = this.siblings(node, model);
+		const idx = sibs.findIndex((n) => n.id === node.id);
+		if (idx <= 0) return;
+		const twoBefore = sibs[idx - 2];
+		const insertAfter = twoBefore ? twoBefore.lastDescLine : this.parentLineOf(node, model);
+		await moveNode(this.plugin, model.file, {
+			start: node.line,
+			end: node.lastDescLine,
+			insertAfter,
+			oldDepth: node.depth,
+			newDepth: node.depth,
+			indentUnit: getIndentUnit(this.plugin.settings),
+			bodyStart: model.bodyStart,
+		});
+	}
+
+	private async moveDown(node: TaskNode, model: BoardModel): Promise<void> {
+		const sibs = this.siblings(node, model);
+		const idx = sibs.findIndex((n) => n.id === node.id);
+		const next = idx >= 0 ? sibs[idx + 1] : undefined;
+		if (!next) return;
+		await moveNode(this.plugin, model.file, {
+			start: node.line,
+			end: node.lastDescLine,
+			insertAfter: next.lastDescLine,
+			oldDepth: node.depth,
+			newDepth: node.depth,
+			indentUnit: getIndentUnit(this.plugin.settings),
+			bodyStart: model.bodyStart,
+		});
+	}
+
 	private subtreeIds(node: TaskNode): Set<string> {
 		const ids = new Set<string>();
 		const walk = (n: TaskNode): void => {
@@ -454,8 +494,8 @@ export class TreeView extends TaskTreeView {
 				fallbackOnBody: true,
 				swapThreshold: 0.6,
 				draggable: ".tt-node",
+				handle: ".tt-drag-handle",
 				ghostClass: "tt-ghost",
-				filter: ".tt-toggle, .tt-checkbox, .tt-chip, .tt-focus-btn",
 				onEnd: (evt) => void this.onDrop(evt, model),
 			});
 		});
@@ -526,6 +566,12 @@ export class TreeView extends TaskTreeView {
 					.onClick(() => void clearOverride(this.plugin, model.file, node.line)),
 			);
 		}
+		menu.addItem((i) =>
+			i.setTitle("Move up").setIcon("arrow-up").onClick(() => void this.moveUp(node, model)),
+		);
+		menu.addItem((i) =>
+			i.setTitle("Move down").setIcon("arrow-down").onClick(() => void this.moveDown(node, model)),
+		);
 		menu.addItem((i) =>
 			i
 				.setTitle("Indent (make child of previous)")
