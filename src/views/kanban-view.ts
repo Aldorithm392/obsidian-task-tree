@@ -7,7 +7,6 @@ import {
 	addTagTask,
 	clearOverride,
 	deleteTask,
-	moveNode,
 	openOrCreateTaskNote,
 	renameTask,
 	writeOverride,
@@ -15,11 +14,10 @@ import {
 	type TaskNoteMeta,
 } from "../board-controller.ts";
 import { flatten } from "../model/parser.ts";
-import { getIndentUnit } from "../settings.ts";
 import type { ColumnDef, TaskNode } from "../model/types.ts";
 import type TaskTreePlugin from "../main.ts";
 import { breadcrumb, createOverrideBadge, createProgressBadge, placementColumn } from "./card.ts";
-import { confirmModal, pickFromList, promptText } from "./modals.ts";
+import { confirmModal, promptText } from "./modals.ts";
 
 export class KanbanView extends TaskTreeView {
 	private byId = new Map<string, TaskNode>();
@@ -182,9 +180,6 @@ export class KanbanView extends TaskTreeView {
 			i.setTitle("Add subtask").setIcon("plus").onClick(() => void addChildTask(this.plugin, model.file, node)),
 		);
 		menu.addItem((i) =>
-			i.setTitle("Nest under…").setIcon("git-fork").onClick(() => void this.nestUnder(node, model)),
-		);
-		menu.addItem((i) =>
 			i.setTitle("Rename…").setIcon("pencil").onClick(() => void this.renamePrompt(node, model)),
 		);
 		menu.addItem((i) => i.setTitle("Add tag…").setIcon("tag").onClick(() => void this.tagPrompt(node, model)));
@@ -214,37 +209,6 @@ export class KanbanView extends TaskTreeView {
 		const parent = node.parentId ? this.byId.get(node.parentId) : undefined;
 		const meta: TaskNoteMeta = { depth: node.depth, path, parentText: parent ? parent.text : null };
 		void openOrCreateTaskNote(this.plugin, model, node, meta);
-	}
-
-	private async nestUnder(node: TaskNode, model: BoardModel): Promise<void> {
-		const forbidden = new Set(flatten([node]).map((n) => n.id));
-		const candidates = flatten(model.roots).filter((n) => n.isTask && !forbidden.has(n.id));
-		if (candidates.length === 0) return;
-		const target = await pickFromList(this.app, candidates, (n) => this.pathLabel(n), "Nest under which task?");
-		if (!target) return;
-		await moveNode(this.plugin, model.file, {
-			start: node.line,
-			end: node.lastDescLine,
-			insertAfter: target.lastDescLine,
-			oldDepth: node.depth,
-			newDepth: target.depth + 1,
-			indentUnit: getIndentUnit(this.plugin.settings),
-			bodyStart: model.bodyStart,
-		});
-	}
-
-	private pathLabel(node: TaskNode): string {
-		const parts: string[] = [];
-		let pid = node.parentId;
-		let guard = 0;
-		while (pid && guard++ < 50) {
-			const p = this.byId.get(pid);
-			if (!p) break;
-			parts.unshift(p.text || "…");
-			pid = p.parentId;
-		}
-		parts.push(node.text || "(untitled)");
-		return parts.join(" / ");
 	}
 
 	private async renamePrompt(node: TaskNode, model: BoardModel): Promise<void> {

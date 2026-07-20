@@ -323,7 +323,11 @@ export abstract class TaskTreeView extends ItemView {
 		box.createEl("p", {
 			text: "Open a note that has type: task-tree in its frontmatter, or use the current file.",
 		});
-		box.createEl("button", { cls: "tt-btn", text: "Use current file" }).addEventListener("click", () => {
+		const row = box.createDiv({ cls: "tt-placeholder-actions" });
+		row.createEl("button", { cls: "tt-btn tt-btn-cta", text: "New board" }).addEventListener("click", () => {
+			void this.plugin.createNewBoard();
+		});
+		row.createEl("button", { cls: "tt-btn", text: "Use current file" }).addEventListener("click", () => {
 			void this.useActiveFile();
 		});
 	}

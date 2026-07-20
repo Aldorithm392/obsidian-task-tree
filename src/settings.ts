@@ -19,6 +19,8 @@ export interface TaskTreeSettings {
 	showBoardStats: boolean;
 	/** Folder for notes the plugin creates for a task. Empty = next to the board. */
 	taskNoteFolder: string;
+	/** Folder where the "create new board" command puts new boards. Empty = vault root. */
+	newBoardFolder: string;
 }
 
 export const DEFAULT_SETTINGS: TaskTreeSettings = {
@@ -35,6 +37,7 @@ export const DEFAULT_SETTINGS: TaskTreeSettings = {
 	treeLayout: "list",
 	showBoardStats: false,
 	taskNoteFolder: "",
+	newBoardFolder: "",
 };
 
 /** The indentation unit used when the plugin writes moved or new lines. */
@@ -170,7 +173,20 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 				}),
 			);
 
-		new Setting(containerEl).setName("Task notes").setHeading();
+		new Setting(containerEl).setName("New boards & task notes").setHeading();
+
+		new Setting(containerEl)
+			.setName("New-board folder")
+			.setDesc('Folder where "Create a new Task Tree board" puts new boards. Leave empty for the vault root.')
+			.addText((t) =>
+				t
+					.setPlaceholder("e.g. Projects")
+					.setValue(this.plugin.settings.newBoardFolder)
+					.onChange(async (v) => {
+						this.plugin.settings.newBoardFolder = v.replace(/^\/+|\/+$/g, "").trim();
+						await this.plugin.saveSettings();
+					}),
+			);
 
 		new Setting(containerEl)
 			.setName("Task-note folder")

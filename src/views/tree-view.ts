@@ -20,7 +20,7 @@ import { getIndentUnit } from "../settings.ts";
 import type { TaskNode, TreeLayout } from "../model/types.ts";
 import type TaskTreePlugin from "../main.ts";
 import { createOverrideBadge, createProgressBadge, createStatusChip, placementColumn } from "./card.ts";
-import { confirmModal, pickFromList, promptText } from "./modals.ts";
+import { confirmModal, promptText } from "./modals.ts";
 
 interface RowOptions {
 	toggle: "collapse" | "drill" | "none";
@@ -36,6 +36,9 @@ export class TreeView extends TaskTreeView {
 	private columnPath: string[] = [];
 	private byId = new Map<string, TaskNode>();
 	private draggingId: string | null = null;
+	private dragForbidden: Set<string> | null = null; // dragged node + its subtree, computed once per drag
+	private hintEl: HTMLElement | null = null; // the row currently showing a drop hint
+	private hintZone: string | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: TaskTreePlugin) {
 		super(leaf, plugin);
@@ -330,15 +333,13 @@ export class TreeView extends TaskTreeView {
 			if (!this.draggingId) return;
 			e.preventDefault();
 			if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-			box.removeClass(...TreeView.DROP_HINTS);
-			box.addClass("tt-drop-inside");
+			this.setHint(box, "inside");
 		});
-		this.registerDomEvent(box, "dragleave", () => box.removeClass(...TreeView.DROP_HINTS));
 		this.registerDomEvent(box, "drop", (e: DragEvent) => {
 			e.preventDefault();
 			e.stopPropagation();
 			const id = this.draggingId;
-			box.removeClass(...TreeView.DROP_HINTS);
+			this.endDrag();
 			if (id) void this.applyDropToRoot(id, model);
 		});
 	}
@@ -404,6 +405,17 @@ export class TreeView extends TaskTreeView {
 			const parentNode = this.byId.get(parentId);
 			if (!parentNode || parentNode.children.length === 0) break;
 			this.renderColumnPane(wrap, parentNode.children, parentNode.text || "…", i + 1, model);
+		}
+
+		// Inverted: put the goal pane on the right by reversing the DOM order with
+		// normal flex-direction. (CSS row-reverse overflows unreachably to the left
+		// in a horizontal scroll container, hiding deep panes.)
+		if (this.inverted) {
+			const panes = Array.from(wrap.children);
+			for (let i = panes.length - 1; i >= 0; i--) {
+				const pane = panes[i];
+				if (pane) wrap.appendChild(pane);
+			}
 		}
 	}
 
@@ -486,14 +498,18 @@ export class TreeView extends TaskTreeView {
 		if (node.override) createOverrideBadge(meta, node.override);
 	}
 
+	/** Change the in-place focus. Always clears the columns drill path so the two can't desync. */
+	private setFocus(id: string | null): void {
+		this.focusId = id;
+		this.columnPath = [];
+		this.app.workspace.requestSaveLayout();
+		void this.render();
+	}
+
 	private renderFocusBar(container: HTMLElement, node: TaskNode, model: BoardModel): void {
 		const bar = container.createDiv({ cls: "tt-focus-bar" });
 		const exit = bar.createEl("button", { cls: "tt-btn", text: "All tasks" });
-		this.registerDomEvent(exit, "click", () => {
-			this.focusId = null;
-			this.app.workspace.requestSaveLayout();
-			void this.render();
-		});
+		this.registerDomEvent(exit, "click", () => this.setFocus(null));
 		const chain: TaskNode[] = [];
 		let pid = node.parentId;
 		let guard = 0;
@@ -506,11 +522,7 @@ export class TreeView extends TaskTreeView {
 		for (const anc of chain) {
 			bar.createSpan({ cls: "tt-focus-sep", text: "›" });
 			const crumb = bar.createSpan({ cls: "tt-focus-crumb", text: anc.text || "…" });
-			this.registerDomEvent(crumb, "click", () => {
-				this.focusId = anc.id;
-				this.app.workspace.requestSaveLayout();
-				void this.render();
-			});
+			this.registerDomEvent(crumb, "click", () => this.setFocus(anc.id));
 		}
 		bar.createSpan({ cls: "tt-focus-sep", text: "›" });
 		bar.createSpan({ cls: "tt-focus-current", text: node.text || "…" });
@@ -613,38 +625,6 @@ export class TreeView extends TaskTreeView {
 		});
 	}
 
-	/** Reparent this node as the last child of a task the user picks (works on leaves too). */
-	private async nestUnder(node: TaskNode, model: BoardModel): Promise<void> {
-		const forbidden = new Set(flatten([node]).map((n) => n.id));
-		const candidates = flatten(model.roots).filter((n) => n.isTask && !forbidden.has(n.id));
-		if (candidates.length === 0) return;
-		const target = await pickFromList(this.app, candidates, (n) => this.pathLabel(n), "Nest under which task?");
-		if (!target) return;
-		await moveNode(this.plugin, model.file, {
-			start: node.line,
-			end: node.lastDescLine,
-			insertAfter: target.lastDescLine,
-			oldDepth: node.depth,
-			newDepth: target.depth + 1,
-			indentUnit: getIndentUnit(this.plugin.settings),
-			bodyStart: model.bodyStart,
-		});
-	}
-
-	private pathLabel(node: TaskNode): string {
-		const parts: string[] = [];
-		let pid = node.parentId;
-		let guard = 0;
-		while (pid && guard++ < 50) {
-			const p = this.byId.get(pid);
-			if (!p) break;
-			parts.unshift(p.text || "…");
-			pid = p.parentId;
-		}
-		parts.push(node.text || "(untitled)");
-		return parts.join(" / ");
-	}
-
 	/** Move a node to be the last of its current siblings (reliable "drop at the end"). */
 	private async moveToEnd(node: TaskNode, model: BoardModel): Promise<void> {
 		const sibs = this.siblings(node, model);
@@ -687,6 +667,7 @@ export class TreeView extends TaskTreeView {
 
 		this.registerDomEvent(grip, "dragstart", (e: DragEvent) => {
 			this.draggingId = node.id;
+			this.dragForbidden = this.subtreeIds(node); // compute the no-drop set ONCE, not per dragover
 			if (e.dataTransfer) {
 				e.dataTransfer.effectAllowed = "move";
 				e.dataTransfer.setData("text/plain", node.id);
@@ -695,26 +676,24 @@ export class TreeView extends TaskTreeView {
 			host.addClass("tt-dragging");
 		});
 		this.registerDomEvent(grip, "dragend", () => {
-			this.draggingId = null;
+			this.endDrag();
 			host.removeClass("tt-dragging");
-			this.clearDropHints();
 		});
 
+		// No dragleave handler: a single tracked hint (setHint/clearHint) avoids the
+		// flicker of dragleave firing every time the cursor crosses a child element.
 		this.registerDomEvent(host, "dragover", (e: DragEvent) => {
-			const dragged = this.draggingId ? this.byId.get(this.draggingId) : null;
-			if (!dragged || dragged.id === node.id || this.subtreeIds(dragged).has(node.id)) return;
+			if (!this.draggingId || node.id === this.draggingId || this.dragForbidden?.has(node.id)) return;
 			e.preventDefault();
 			if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-			host.removeClass(...TreeView.DROP_HINTS);
-			host.addClass(`tt-drop-${this.dropZone(e, host)}`);
+			this.setHint(host, this.dropZone(e, host));
 		});
-		this.registerDomEvent(host, "dragleave", () => host.removeClass(...TreeView.DROP_HINTS));
 		this.registerDomEvent(host, "drop", (e: DragEvent) => {
 			e.preventDefault();
 			e.stopPropagation();
 			const draggedId = this.draggingId;
 			const zone = this.dropZone(e, host);
-			host.removeClass(...TreeView.DROP_HINTS);
+			this.endDrag();
 			if (draggedId) void this.applyDrop(draggedId, node, zone, model);
 		});
 	}
@@ -728,10 +707,25 @@ export class TreeView extends TaskTreeView {
 		return "inside";
 	}
 
-	private clearDropHints(): void {
-		this.containerEl
-			.querySelectorAll("." + TreeView.DROP_HINTS.join(", ."))
-			.forEach((el) => el.classList.remove(...TreeView.DROP_HINTS));
+	/** Show a drop hint on `el` for `zone`, moving it there only if it actually changed. */
+	private setHint(el: HTMLElement, zone: string): void {
+		if (this.hintEl === el && this.hintZone === zone) return;
+		this.clearHint();
+		el.addClass(`tt-drop-${zone}`);
+		this.hintEl = el;
+		this.hintZone = zone;
+	}
+
+	private clearHint(): void {
+		if (this.hintEl) this.hintEl.removeClass(...TreeView.DROP_HINTS);
+		this.hintEl = null;
+		this.hintZone = null;
+	}
+
+	private endDrag(): void {
+		this.draggingId = null;
+		this.dragForbidden = null;
+		this.clearHint();
 	}
 
 	private async applyDrop(
@@ -800,9 +794,6 @@ export class TreeView extends TaskTreeView {
 			i.setTitle("Move to end").setIcon("chevrons-down").onClick(() => void this.moveToEnd(node, model)),
 		);
 		menu.addItem((i) =>
-			i.setTitle("Nest under…").setIcon("git-fork").onClick(() => void this.nestUnder(node, model)),
-		);
-		menu.addItem((i) =>
 			i
 				.setTitle("Indent (make child of previous)")
 				.setIcon("indent")
@@ -826,11 +817,7 @@ export class TreeView extends TaskTreeView {
 				i
 					.setTitle("Focus here (in place)")
 					.setIcon("crosshair")
-					.onClick(() => {
-						this.focusId = node.id;
-						this.app.workspace.requestSaveLayout();
-						void this.render();
-					}),
+					.onClick(() => this.setFocus(node.id)),
 			);
 		}
 		menu.addSeparator();

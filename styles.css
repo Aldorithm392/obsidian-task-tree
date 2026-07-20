@@ -364,6 +364,11 @@
 	width: 40px;
 	height: 40px;
 }
+.tt-placeholder-actions {
+	display: flex;
+	gap: 8px;
+	margin-top: 4px;
+}
 
 /* ---- settings ---- */
 .tt-column-row .tt-status-input {
@@ -669,10 +674,9 @@ h2.tt-dash-title {
 	align-items: stretch;
 	height: 100%;
 }
-/* inverted: the goal (first / "note" pane) sits on the right; drilling extends left */
-.tt-columns.is-inverted {
-	flex-direction: row-reverse;
-}
+/* inverted: the goal pane is moved to the right by reversing DOM order in JS
+   (renderColumns), NOT via flex-direction: row-reverse, which would overflow
+   unreachably to the left inside the horizontal scroll container. */
 .tt-column-pane {
 	flex: 0 0 240px;
 	display: flex;
@@ -680,9 +684,8 @@ h2.tt-dash-title {
 	border-right: 1px solid var(--background-modifier-border);
 	max-height: 100%;
 }
-.tt-columns.is-inverted .tt-column-pane {
+.tt-column-pane:last-child {
 	border-right: none;
-	border-left: 1px solid var(--background-modifier-border);
 }
 .tt-column-pane-head {
 	padding: 6px 10px;

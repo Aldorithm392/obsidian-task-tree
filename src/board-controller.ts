@@ -171,6 +171,49 @@ export async function renameBoard(plugin: TaskTreePlugin, file: TFile, title: st
 	});
 }
 
+/** Body of a brand-new board: managed frontmatter + a couple of starter tasks to show the shape. */
+function boardFileContent(title: string, unit: string): string {
+	return [
+		"---",
+		"type: task-tree",
+		// JSON-encode so a title with a colon/quote stays valid YAML.
+		`title: ${JSON.stringify(title)}`,
+		"---",
+		"",
+		`# ${title}`,
+		"",
+		"- [ ] First task",
+		`${unit}- [ ] A subtask`,
+		"- [ ] Second task",
+		"",
+	].join("\n");
+}
+
+/** Create a new Markdown note that is already a Task Tree board, in `folder` (empty = vault root). */
+export async function createBoardFile(plugin: TaskTreePlugin, title: string, folder: string): Promise<TFile> {
+	const { app } = plugin;
+	const base = sanitizeFileName(cleanTitle(title)) || "Untitled board";
+	const dir = folder.trim().replace(/^\/+|\/+$/g, "");
+
+	let name = base;
+	let path = dir ? `${dir}/${name}.md` : `${name}.md`;
+	let n = 2;
+	while (app.vault.getAbstractFileByPath(path)) {
+		name = `${base} ${n++}`;
+		path = dir ? `${dir}/${name}.md` : `${name}.md`;
+	}
+
+	if (dir && !app.vault.getAbstractFileByPath(dir)) {
+		try {
+			await app.vault.createFolder(dir);
+		} catch {
+			// already exists / race — ignore
+		}
+	}
+
+	return app.vault.create(path, boardFileContent(title, getIndentUnit(plugin.settings)));
+}
+
 // ---- task = note -----------------------------------------------------------
 
 export interface TaskNoteMeta {

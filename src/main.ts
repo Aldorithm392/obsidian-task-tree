@@ -6,6 +6,8 @@ import { DashboardView } from "./views/dashboard-view.ts";
 import { TaskTreeView, VIEW_TYPE_DASHBOARD, VIEW_TYPE_KANBAN, VIEW_TYPE_TREE } from "./views/base-view.ts";
 import { isManagedFrontmatter, MANAGED_TYPE } from "./model/okf.ts";
 import { assignIdsInText } from "./model/writer.ts";
+import { createBoardFile } from "./board-controller.ts";
+import { promptText } from "./views/modals.ts";
 
 export default class TaskTreePlugin extends Plugin {
 	settings: TaskTreeSettings = DEFAULT_SETTINGS;
@@ -36,6 +38,11 @@ export default class TaskTreePlugin extends Plugin {
 			id: "open-tree",
 			name: "Open current file as tree",
 			checkCallback: (checking) => this.activeMdGuard(checking, () => this.openForActive(VIEW_TYPE_TREE)),
+		});
+		this.addCommand({
+			id: "new-board",
+			name: "Create a new Task Tree board",
+			callback: () => void this.createNewBoard(),
 		});
 		this.addCommand({
 			id: "convert-to-board",
@@ -127,6 +134,23 @@ export default class TaskTreePlugin extends Plugin {
 	private async convertActive(): Promise<void> {
 		const file = this.app.workspace.getActiveFile();
 		if (file) await this.convert(file);
+	}
+
+	/** Prompt for a name, create a fresh board file, and open it in the tree view. */
+	async createNewBoard(): Promise<void> {
+		const name = await promptText(this.app, {
+			title: "New Task Tree board",
+			placeholder: "Project name",
+			cta: "Create board",
+		});
+		if (!name) return;
+		try {
+			const file = await createBoardFile(this, name, this.settings.newBoardFolder);
+			await this.activateView(VIEW_TYPE_TREE, file.path);
+			new Notice(`Created board "${file.basename}".`);
+		} catch (err) {
+			new Notice(`Could not create board: ${(err as Error).message}`);
+		}
 	}
 
 	private async convert(file: TFile): Promise<void> {
