@@ -25,6 +25,9 @@ tags: [meta, dogfood]
 		- [ ] type + how to read the note
 		- [ ] parent — link to the parent task's note
 		- [ ] position in the tree: depth, path from root, distance to the main task
+- [ ] Presentation — Task Tree is also a project viewer
+	- [ ] Inverted tree: flip the diagram so enabling tasks flow into the final project (goal on the right)
+	- [ ] Same Markdown, more ways to see it — human clarity; the LLM reads the same nesting
 - [ ] Advanced — connect tasks to each other (dependencies / graph)
 - [ ] Ship
 	- [ ] Fill author / GitHub handle in manifest.json

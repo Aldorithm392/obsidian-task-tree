@@ -53,6 +53,10 @@ migration, a `tt_version` key can be introduced then, opt-in.
   its position in the tree (`depth`, `path` from root, `distance` to the main task) — so an agent reads
   it standalone. `parent` is the first graph edge.
 
+**Presentation — Task Tree is a project viewer**
+- [ ] Inverted tree: a direction toggle on the diagram so *enabling* tasks flow into the final project
+  (goal on the right). Same Markdown, another lens for mental clarity.
+
 **Advanced (deliberately later)**
 - [ ] Connect tasks to each other (dependencies / relationships) — the real graph, written as Markdown
   links so agents read it too.

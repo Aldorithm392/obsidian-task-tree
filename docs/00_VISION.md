@@ -9,6 +9,16 @@
 A task manager that renders a **normal nested Markdown checklist** as a **tree** and a **Kanban board**,
 so every node is a small milestone and you never lose the big picture. Plain Markdown, agent-ready.
 
+## Also a project viewer
+
+Task Tree isn't only for managing tasks — it's a way to **view a project**. The same nested Markdown,
+presented multiple ways for mental clarity ("at the end it's just how you present information"), while an
+LLM reads the same nesting underneath. The structure is fixed; only the lens changes:
+- **Inverted tree** — flip the diagram so the *enabling* tasks flow left→right into the **final project**
+  (goal on the right). Reframes "break the goal down" into "these blocks build the goal" — you see what
+  enables the outcome. A direction toggle on the diagram layout.
+- (more lenses as we find them.)
+
 ## The three layers (the mental model that unlocks everything)
 
 One structure, three layers over it:
