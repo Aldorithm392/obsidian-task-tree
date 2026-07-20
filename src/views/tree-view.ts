@@ -20,7 +20,7 @@ import { getIndentUnit } from "../settings.ts";
 import type { TaskNode, TreeLayout } from "../model/types.ts";
 import type TaskTreePlugin from "../main.ts";
 import { createOverrideBadge, createProgressBadge, createStatusChip, placementColumn } from "./card.ts";
-import { confirmModal, promptText } from "./modals.ts";
+import { confirmModal, pickFromList, promptText } from "./modals.ts";
 
 interface RowOptions {
 	toggle: "collapse" | "drill" | "none";
@@ -528,6 +528,38 @@ export class TreeView extends TaskTreeView {
 		});
 	}
 
+	/** Reparent this node as the last child of a task the user picks (works on leaves too). */
+	private async nestUnder(node: TaskNode, model: BoardModel): Promise<void> {
+		const forbidden = new Set(flatten([node]).map((n) => n.id));
+		const candidates = flatten(model.roots).filter((n) => n.isTask && !forbidden.has(n.id));
+		if (candidates.length === 0) return;
+		const target = await pickFromList(this.app, candidates, (n) => this.pathLabel(n), "Nest under which task?");
+		if (!target) return;
+		await moveNode(this.plugin, model.file, {
+			start: node.line,
+			end: node.lastDescLine,
+			insertAfter: target.lastDescLine,
+			oldDepth: node.depth,
+			newDepth: target.depth + 1,
+			indentUnit: getIndentUnit(this.plugin.settings),
+			bodyStart: model.bodyStart,
+		});
+	}
+
+	private pathLabel(node: TaskNode): string {
+		const parts: string[] = [];
+		let pid = node.parentId;
+		let guard = 0;
+		while (pid && guard++ < 50) {
+			const p = this.byId.get(pid);
+			if (!p) break;
+			parts.unshift(p.text || "…");
+			pid = p.parentId;
+		}
+		parts.push(node.text || "(untitled)");
+		return parts.join(" / ");
+	}
+
 	/** Move a node to be the last of its current siblings (reliable "drop at the end"). */
 	private async moveToEnd(node: TaskNode, model: BoardModel): Promise<void> {
 		const sibs = this.siblings(node, model);
@@ -644,6 +676,9 @@ export class TreeView extends TaskTreeView {
 		);
 		menu.addItem((i) =>
 			i.setTitle("Move to end").setIcon("chevrons-down").onClick(() => void this.moveToEnd(node, model)),
+		);
+		menu.addItem((i) =>
+			i.setTitle("Nest under…").setIcon("git-fork").onClick(() => void this.nestUnder(node, model)),
 		);
 		menu.addItem((i) =>
 			i
