@@ -49,6 +49,9 @@ migration, a `tt_version` key can be introduced then, opt-in.
 
 **Next — task = note**
 - [ ] Open any task as its own note (`[[link]]`) for progress / status / code, in the configured folder.
+- [ ] Each task-note carries self-describing YAML frontmatter (OKF concept): `type`, `parent` link, and
+  its position in the tree (`depth`, `path` from root, `distance` to the main task) — so an agent reads
+  it standalone. `parent` is the first graph edge.
 
 **Advanced (deliberately later)**
 - [ ] Connect tasks to each other (dependencies / relationships) — the real graph, written as Markdown

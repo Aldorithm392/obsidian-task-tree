@@ -21,6 +21,10 @@ tags: [meta, dogfood]
 		- [ ] YAML title = note title (rename the board renames the file)
 - [ ] Next — task = note
 	- [ ] Open each task as its own note ([[link]]) for progress / status / code
+	- [ ] Give each task-note its own YAML frontmatter so an agent reads it standalone
+		- [ ] type + how to read the note
+		- [ ] parent — link to the parent task's note
+		- [ ] position in the tree: depth, path from root, distance to the main task
 - [ ] Advanced — connect tasks to each other (dependencies / graph)
 - [ ] Ship
 	- [ ] Fill author / GitHub handle in manifest.json

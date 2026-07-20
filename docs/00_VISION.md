@@ -55,6 +55,11 @@ One structure, three layers over it:
 ### 🌐 Next — "task = note"
 3. **Open any task as its own note.** Create/open a linked note (`[[…]]`) per task for **progress,
    status, code, notes** — in the configured folder. "Obsidian's graph network, seen as a work tree."
+4. **Each task-note is self-describing (OKF concept).** Its YAML frontmatter tells an agent how to read
+   it and *where it sits* without reconstructing the tree: `type`, `parent` (link to the parent task's
+   note), and its position — `depth`, `path` from the root, and `distance` to the main task. (Literal
+   diagram X/Y is layout-derived and not stored — the tree structure *is* the position.) This is the
+   bridge to the graph: `parent` is the first edge.
 
 ### 🧠 Advanced (deliberately later — user's call)
 4. **Connect tasks to each other** — dependencies / relationships between tasks across the tree (the
