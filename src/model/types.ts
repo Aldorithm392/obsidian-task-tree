@@ -9,6 +9,11 @@ export type Role = "todo" | "doing" | "done" | "cancelled" | "blocked";
 
 export const ALL_ROLES: Role[] = ["todo", "doing", "done", "cancelled", "blocked"];
 
+/** How the Tree view lays out the hierarchy. */
+export type TreeLayout = "list" | "diagram" | "columns";
+
+export const ALL_TREE_LAYOUTS: TreeLayout[] = ["list", "diagram", "columns"];
+
 /** One Kanban column, mapped to exactly one checkbox status character. */
 export interface ColumnDef {
 	/** Stable slug, e.g. "todo". */
@@ -86,6 +91,8 @@ export interface TaskNode {
 	parentId: string | null;
 	children: TaskNode[];
 	isLeaf: boolean;
+	/** Set by markBlockedPaths: a blocked task sits somewhere below this node. */
+	hasBlockedDescendant?: boolean;
 }
 
 export interface RollupOptions {

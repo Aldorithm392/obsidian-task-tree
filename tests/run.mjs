@@ -12,9 +12,19 @@ import {
 	assignIdsInText,
 	moveSubtreeInText,
 	frontmatterEndLine,
+	insertTaskInText,
+	deleteRangeInText,
+	setTaskTextInText,
+	addTagInText,
 } from "../src/model/writer.ts";
 import { DEFAULT_COLUMNS, validateColumns } from "../src/columns.ts";
 import { generateId } from "../src/model/ids.ts";
+import {
+	computeSummary,
+	collectBlockers,
+	collectNextUp,
+	markBlockedPaths,
+} from "../src/model/insights.ts";
 
 // ---- tiny test runner --------------------------------------------------------
 let passed = 0;
@@ -304,6 +314,62 @@ test("duplicate status character is rejected", () => {
 		{ id: "b", name: "B", status: " ", role: "done" },
 	];
 	assert.ok(validateColumns(bad).some((e) => e.includes("status character")));
+});
+
+// ---- writer: CRUD ------------------------------------------------------------
+console.log("writer.crud");
+test("insert child task after the parent's subtree", () => {
+	const text = ["- [ ] A", "\t- [ ] A1", "- [ ] B"].join("\n");
+	const out = insertTaskInText(text, 1, "\t", "A2");
+	assert.equal(out, ["- [ ] A", "\t- [ ] A1", "\t- [ ] A2", "- [ ] B"].join("\n"));
+});
+test("delete a subtree range", () => {
+	const text = ["- [ ] A", "\t- [ ] A1", "\t\t- [ ] A1a", "- [ ] B"].join("\n");
+	assert.equal(deleteRangeInText(text, 1, 2), ["- [ ] A", "- [ ] B"].join("\n"));
+});
+test("rename preserves status, override and id", () => {
+	assert.equal(
+		setTaskTextInText("\t- [x] Old [tt-override:: done] ^t-1", 0, "New"),
+		"\t- [x] New [tt-override:: done] ^t-1",
+	);
+});
+test("add tag before the block id", () => {
+	assert.equal(addTagInText("- [ ] A ^t-1", 0, "urgent"), "- [ ] A #urgent ^t-1");
+});
+test("add tag is idempotent", () => {
+	const once = addTagInText("- [ ] A", 0, "x");
+	assert.equal(addTagInText(once, 0, "x"), once);
+});
+
+// ---- insights ----------------------------------------------------------------
+console.log("insights");
+test("summary counts every task by role", () => {
+	const s = computeSummary(parse(["- [ ] A", "\t- [x] A1", "\t- [!] A2", "- [x] B"]));
+	assert.equal(s.total, 4);
+	assert.equal(s.byRole.done, 2);
+	assert.equal(s.byRole.blocked, 2); // A derives blocked, A2 is blocked
+});
+test("blockers are blocked leaves with their path", () => {
+	const b = collectBlockers(parse(["- [ ] A", "\t- [!] A2"]));
+	assert.equal(b.length, 1);
+	assert.equal(b[0].node.text, "A2");
+	assert.equal(b[0].path.map((n) => n.text).join("/"), "A");
+});
+test("markBlockedPaths flags every ancestor of a blocked leaf", () => {
+	const roots = parse(["- [ ] A", "\t- [ ] A1", "\t\t- [!] A1a"]);
+	markBlockedPaths(roots);
+	const a = roots[0];
+	const a1 = a.children[0];
+	assert.equal(a.hasBlockedDescendant, true);
+	assert.equal(a1.hasBlockedDescendant, true);
+	assert.equal(a1.children[0].hasBlockedDescendant, false);
+});
+test("next up lists actionable leaves, in-progress first", () => {
+	const nu = collectNextUp(parse(["- [ ] A", "\t- [/] A1", "\t- [ ] A2", "\t- [x] A3", "\t- [!] A4"]));
+	assert.deepEqual(
+		nu.map((i) => i.node.text),
+		["A1", "A2"],
+	);
 });
 
 // ---- summary -----------------------------------------------------------------

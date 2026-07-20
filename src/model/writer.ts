@@ -159,3 +159,59 @@ function reindent(line: string, delta: number, unit: string): string {
 	const newLevel = Math.max(0, level + delta);
 	return unit.repeat(newLevel) + content;
 }
+
+// ---- task CRUD (dashboard editing) ------------------------------------------
+
+/** Insert a new task line after `afterLine` (use bodyStart-1 to prepend to the body). */
+export function insertTaskInText(
+	text: string,
+	afterLine: number,
+	indentText: string,
+	taskText: string,
+	status = " ",
+): string {
+	const lines = text.split("\n");
+	const at = Math.max(-1, Math.min(afterLine, lines.length - 1)) + 1;
+	lines.splice(at, 0, `${indentText}- [${status}] ${taskText}`);
+	return lines.join("\n");
+}
+
+/** Delete an inclusive line range (a task and its whole subtree). */
+export function deleteRangeInText(text: string, start: number, end: number): string {
+	const lines = text.split("\n");
+	if (start < 0 || end >= lines.length || start > end) return text;
+	lines.splice(start, end - start + 1);
+	return lines.join("\n");
+}
+
+/** Rebuild a list line with new body text, preserving marker/status/override/blockId. */
+function rebuildLine(original: string, newText: string): string {
+	const p = parseLine(original);
+	if (p.marker === "") return original;
+	const box = p.isTask ? `[${p.statusChar || " "}] ` : "";
+	const override = p.override ? ` [tt-override:: ${p.override}]` : "";
+	const id = p.blockId ? ` ^${p.blockId}` : "";
+	return `${p.indentText}${p.marker} ${box}${newText}${override}${id}`;
+}
+
+/** Replace a task's display text, preserving its status, override field, and block id. */
+export function setTaskTextInText(text: string, line: number, newText: string): string {
+	const lines = text.split("\n");
+	const l = lines[line];
+	if (l === undefined) return text;
+	lines[line] = rebuildLine(l, newText.trim());
+	return lines.join("\n");
+}
+
+/** Append a #tag to a task's text (before any override field / block id); no-op if already present. */
+export function addTagInText(text: string, line: number, tag: string): string {
+	const lines = text.split("\n");
+	const l = lines[line];
+	if (l === undefined) return text;
+	const clean = tag.replace(/^#+/, "").trim().replace(/\s+/g, "-");
+	if (!clean) return text;
+	const p = parseLine(l);
+	if (p.text.split(/\s+/).includes(`#${clean}`)) return text;
+	lines[line] = rebuildLine(l, `${p.text} #${clean}`.trim());
+	return lines.join("\n");
+}

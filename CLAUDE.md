@@ -35,19 +35,27 @@ src/
   columns.ts           char <-> column <-> role mapping; validateColumns()
   board-controller.ts  loadBoard(), ensureIds(), writeStatus/Override/moveNode (vault.process)
   model/               PURE, no 'obsidian' import (unit-tested under Node):
-    types.ts           Role, ColumnDef, RawListItem, ParsedLine, TaskNode, RollupOptions
+    types.ts           Role, TreeLayout, ColumnDef, RawListItem, ParsedLine, TaskNode, RollupOptions
     line.ts            parseLine()
     parser.ts          buildTree() from listItems + raw lines; flatten(); findById()
     rollup.ts          computeRollup()
-    writer.ts          setStatusInText / setOverrideInText / assignIdsInText / moveSubtreeInText
+    insights.ts        computeSummary / collectBlockers / collectNextUp / markBlockedPaths (dashboard)
+    writer.ts          setStatus/Override, assignIds, moveSubtree + CRUD: insert/delete/setText/addTag
     ids.ts             generateId() / collectBlockIds()
     okf.ts             isManagedFrontmatter(), columnsFromFrontmatter(), index/log builders
   views/
-    base-view.ts       TaskTreeView base + VIEW_TYPE_* constants; bind/render/empty states
-    kanban-view.ts     columns from model; SortableJS per column = Operation B
-    tree-view.ts       collapse/focus; checkbox cycle; SortableJS reparent = Operation A
+    base-view.ts       TaskTreeView base + VIEW_TYPE_* (kanban/tree/dashboard); dashboard header + blockers panel
+    kanban-view.ts     columns from model; SortableJS per column = Operation B; CRUD menu
+    tree-view.ts       3 layouts (list/diagram/columns), collapse/focus, full-focus, checkbox cycle, reparent = Operation A
+    dashboard-view.ts  extends TreeView: full header + blockers panel + tree
     card.ts            shared chip / progress / override-badge DOM
+    modals.ts          promptText() / confirmModal()
 ```
+
+**Dashboard + editing:** views carry a compact dashboard header (rename board / add task / stats);
+`DashboardView` adds the full Blockers & next-up panel. Editing (add/delete/rename/tag) goes through
+`board-controller` CRUD wrappers → pure `writer` ops. `markBlockedPaths` runs in `loadBoard`, so every
+view can show ⚠ on ancestors of a blocked leaf. Tree layout + focus state persist in the leaf view-state.
 
 **Golden rule:** everything in `src/model/**` stays pure (no `obsidian` import) and written in
 **erasable** TypeScript (no enums, no parameter properties) — that is what lets `tests/run.mjs` run it

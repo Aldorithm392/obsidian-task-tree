@@ -18,6 +18,18 @@ migration, a `tt_version` key can be introduced then, opt-in.
 - Auto-assign block ids to every task in a managed board.
 - Release workflow + publishing docs.
 
+## Shipped (v0.2 — dashboard, layouts, editing)
+
+- **Dashboard view** + a compact dashboard header on the Kanban/Tree views: rename board, add tasks,
+  per-column counts, % done.
+- **Task editing from the UI:** add (child / sibling / root), delete (confirm for subtrees), inline
+  rename (double-click), and tag — via context menu.
+- **Attack the "hidden deep blocker" pain:** a Blockers & next-up panel, ⚠ blocked-path highlighting on
+  ancestors, and summary stats (`src/model/insights.ts`, unit-tested).
+- **Three tree layouts** — list, diagram (horizontal tree + CSS connectors), columns (Finder-style
+  drill-down); remembered per board via view state.
+- **Full-focus view** — open any task + its subtree distraction-free in a main-area pane.
+
 ## Next
 
 - [ ] Manual QA pass in a real vault; polish drag affordances and empty states.

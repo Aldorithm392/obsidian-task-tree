@@ -1,12 +1,21 @@
 import Sortable from "sortablejs";
-import { Menu, type WorkspaceLeaf } from "obsidian";
+import { Menu, setIcon, type WorkspaceLeaf } from "obsidian";
 import { TaskTreeView, VIEW_TYPE_KANBAN, VIEW_TYPE_TREE } from "./base-view.ts";
 import type { BoardModel } from "../board-controller.ts";
-import { clearOverride, writeOverride, writeStatus } from "../board-controller.ts";
+import {
+	addChildTask,
+	addTagTask,
+	clearOverride,
+	deleteTask,
+	renameTask,
+	writeOverride,
+	writeStatus,
+} from "../board-controller.ts";
 import { flatten } from "../model/parser.ts";
 import type { ColumnDef, TaskNode } from "../model/types.ts";
 import type TaskTreePlugin from "../main.ts";
 import { breadcrumb, createOverrideBadge, createProgressBadge, placementColumn } from "./card.ts";
+import { confirmModal, promptText } from "./modals.ts";
 
 export class KanbanView extends TaskTreeView {
 	private byId = new Map<string, TaskNode>();
@@ -32,8 +41,9 @@ export class KanbanView extends TaskTreeView {
 		this.buildToolbar(container, model);
 		const tasks = flatten(model.roots).filter((n) => n.isTask);
 		this.byId = new Map(flatten(model.roots).map((n) => [n.id, n]));
+		this.renderDashboardHeader(container, model, { compact: true });
 
-		const board = container.createDiv({ cls: "tt-kanban" });
+		const board = container.createDiv({ cls: "tt-kanban tt-scroll" });
 		const lists = new Map<string, HTMLElement>();
 
 		for (const col of model.columns) {
@@ -83,6 +93,10 @@ export class KanbanView extends TaskTreeView {
 		if (node.override) createOverrideBadge(meta, node.override);
 		createProgressBadge(meta, node);
 		if (!node.isLeaf) meta.createSpan({ cls: "tt-parent-tag", text: "group" });
+		if (node.hasBlockedDescendant) {
+			const warn = meta.createSpan({ cls: "tt-warn", attr: { "aria-label": "A subtask below is blocked" } });
+			setIcon(warn, "alert-triangle");
+		}
 
 		this.registerDomEvent(card, "click", () => this.openAtLine(model, node.line));
 		this.registerDomEvent(card, "contextmenu", (e) => {
@@ -144,6 +158,18 @@ export class KanbanView extends TaskTreeView {
 					.onClick(() => void clearOverride(this.plugin, model.file, node.line)),
 			);
 		}
+		menu.addSeparator();
+		menu.addItem((i) =>
+			i.setTitle("Add subtask").setIcon("plus").onClick(() => void addChildTask(this.plugin, model.file, node)),
+		);
+		menu.addItem((i) =>
+			i.setTitle("Rename…").setIcon("pencil").onClick(() => void this.renamePrompt(node, model)),
+		);
+		menu.addItem((i) => i.setTitle("Add tag…").setIcon("tag").onClick(() => void this.tagPrompt(node, model)));
+		menu.addItem((i) =>
+			i.setTitle("Delete task").setIcon("trash").onClick(() => void this.deletePrompt(node, model)),
+		);
+		menu.addSeparator();
 		menu.addItem((i) =>
 			i
 				.setTitle("Open note")
@@ -151,5 +177,27 @@ export class KanbanView extends TaskTreeView {
 				.onClick(() => this.openAtLine(model, node.line)),
 		);
 		menu.showAtMouseEvent(e);
+	}
+
+	private async renamePrompt(node: TaskNode, model: BoardModel): Promise<void> {
+		const name = await promptText(this.app, { title: "Rename task", initial: node.text, cta: "Rename" });
+		if (name) await renameTask(this.plugin, model.file, node, name);
+	}
+
+	private async tagPrompt(node: TaskNode, model: BoardModel): Promise<void> {
+		const tag = await promptText(this.app, { title: "Add tag", placeholder: "e.g. urgent", cta: "Add tag" });
+		if (tag) await addTagTask(this.plugin, model.file, node, tag);
+	}
+
+	private async deletePrompt(node: TaskNode, model: BoardModel): Promise<void> {
+		const ok =
+			node.children.length > 0
+				? await confirmModal(this.app, {
+						title: "Delete task and its subtasks?",
+						body: `"${node.text}" and everything under it will be removed.`,
+						cta: "Delete",
+					})
+				: true;
+		if (ok) await deleteTask(this.plugin, model.file, node);
 	}
 }

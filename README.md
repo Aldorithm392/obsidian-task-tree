@@ -76,13 +76,41 @@ tags: [project, marketing]
 
 ---
 
+## A project dashboard, not just a view
+
+Drop a board in a project folder and it becomes the project's command center — for you *and* for an
+AI agent you point at the folder (see below). From one place you can **rename the board, add, delete,
+rename, and tag tasks** (right-click a task, or double-click to rename; "Add task" in the header).
+
+It's also built to surface the thing that quietly derails projects: **you think a milestone is done,
+then a deep subtask blocks it.** Instead of getting ambushed, you get:
+
+- a **summary bar** (counts per column + % done) so you read project health at a glance;
+- a **Blockers & next-up panel** listing the blocked leaf tasks — each with the path up to the
+  milestone it's holding back — plus the tasks you can actually pick up now;
+- **⚠ blocked-path highlighting** so every ancestor of a blocked task lights up, and the chain from a
+  milestone down to its hidden blocker is visible.
+
+Open it with **"Open current file as dashboard"** (or the ribbon icon).
+
+### Three tree layouts + full focus
+
+The **tree** view can be drawn three ways (toolbar switch, remembered per board): **List** (vertical),
+**Diagram** (a horizontal tree — the goal on the left, atomic blockers on the right, so completion
+visibly flows right→left), and **Columns** (drill down level by level, Finder-style). A **focus
+button** on any task opens it and its subtree in a distraction-free full-width pane, with a breadcrumb
+to step back out.
+
+---
+
 ## Quickstart
 
 1. Install (see **Install** below) and enable **Task Tree** in Obsidian.
 2. Open any note and run the command **“Task Tree: Convert current file to a Task Tree board”**
    (or click the ribbon icon — it converts the current note if needed).
-3. Run **“Open current file as Kanban board”** or **“…as tree.”** Drag cards, expand branches,
-   toggle checkboxes — every change writes straight back to the Markdown.
+3. Run **“Open current file as dashboard”** (stats + blockers + tree), or open it as a **Kanban board**
+   or **tree**. Drag cards, expand branches, toggle checkboxes, switch tree layout, add/rename/tag
+   tasks — every change writes straight back to the Markdown.
 
 Columns are fully configurable in **Settings → Task Tree** (add/remove/rename; each maps to a
 checkbox character). Defaults: **To Do** `[ ]`, **Doing** `[/]`, **Done** `[x]` — the universal
@@ -90,6 +118,7 @@ Obsidian/Tasks convention.
 
 ### Commands
 
+- Open current file as dashboard
 - Open current file as Kanban board
 - Open current file as tree
 - Convert current file to a Task Tree board

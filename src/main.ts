@@ -1,10 +1,9 @@
 import { FuzzySuggestModal, Notice, Plugin, TFile, type App } from "obsidian";
 import { DEFAULT_SETTINGS, TaskTreeSettingTab, type TaskTreeSettings } from "./settings.ts";
-import {
-	KanbanView,
-} from "./views/kanban-view.ts";
+import { KanbanView } from "./views/kanban-view.ts";
 import { TreeView } from "./views/tree-view.ts";
-import { TaskTreeView, VIEW_TYPE_KANBAN, VIEW_TYPE_TREE } from "./views/base-view.ts";
+import { DashboardView } from "./views/dashboard-view.ts";
+import { TaskTreeView, VIEW_TYPE_DASHBOARD, VIEW_TYPE_KANBAN, VIEW_TYPE_TREE } from "./views/base-view.ts";
 import { isManagedFrontmatter, MANAGED_TYPE } from "./model/okf.ts";
 import { assignIdsInText } from "./model/writer.ts";
 
@@ -16,12 +15,18 @@ export default class TaskTreePlugin extends Plugin {
 
 		this.registerView(VIEW_TYPE_KANBAN, (leaf) => new KanbanView(leaf, this));
 		this.registerView(VIEW_TYPE_TREE, (leaf) => new TreeView(leaf, this));
+		this.registerView(VIEW_TYPE_DASHBOARD, (leaf) => new DashboardView(leaf, this));
 		this.addSettingTab(new TaskTreeSettingTab(this.app, this));
 
-		this.addRibbonIcon("layout-dashboard", "Open Task Tree board", () => {
-			void this.openForActive(VIEW_TYPE_KANBAN);
+		this.addRibbonIcon("layout-dashboard", "Open Task Tree dashboard", () => {
+			void this.openForActive(VIEW_TYPE_DASHBOARD);
 		});
 
+		this.addCommand({
+			id: "open-dashboard",
+			name: "Open current file as dashboard",
+			checkCallback: (checking) => this.activeMdGuard(checking, () => this.openForActive(VIEW_TYPE_DASHBOARD)),
+		});
 		this.addCommand({
 			id: "open-kanban",
 			name: "Open current file as Kanban board",
@@ -91,6 +96,18 @@ export default class TaskTreePlugin extends Plugin {
 			leaf = workspace.getLeaf("tab");
 			await leaf.setViewState({ type: viewType, active: true, state: { file: filePath } });
 		}
+		void workspace.revealLeaf(leaf);
+	}
+
+	/** Open a task + its subtree as a distraction-free full pane in the main area. */
+	async activateFocusView(filePath: string, focusId: string): Promise<void> {
+		const { workspace } = this.app;
+		const leaf = workspace.getLeaf("tab");
+		await leaf.setViewState({
+			type: VIEW_TYPE_TREE,
+			active: true,
+			state: { file: filePath, focusId, fullFocus: true },
+		});
 		void workspace.revealLeaf(leaf);
 	}
 

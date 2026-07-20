@@ -8,11 +8,16 @@ import {
 	type WorkspaceLeaf,
 } from "obsidian";
 import type TaskTreePlugin from "../main.ts";
-import { loadBoard, ensureIds, type BoardModel } from "../board-controller.ts";
+import { addRootTask, ensureIds, loadBoard, renameBoard, type BoardModel } from "../board-controller.ts";
 import { isManagedFrontmatter, MANAGED_TYPE } from "../model/okf.ts";
+import { collectBlockers, collectNextUp, computeSummary, type Insight } from "../model/insights.ts";
+import { flatten } from "../model/parser.ts";
+import { placementColumn } from "./card.ts";
+import { promptText } from "./modals.ts";
 
 export const VIEW_TYPE_KANBAN = "task-tree-kanban";
 export const VIEW_TYPE_TREE = "task-tree-tree";
+export const VIEW_TYPE_DASHBOARD = "task-tree-dashboard";
 
 /**
  * Shared base for the Kanban and Tree views: owns the bound file, the change
@@ -84,6 +89,9 @@ export abstract class TaskTreeView extends ItemView {
 
 	async render(): Promise<void> {
 		const c = this.contentEl;
+		const prevScroll = c.querySelector<HTMLElement>(".tt-scroll");
+		const sx = prevScroll?.scrollLeft ?? 0;
+		const sy = prevScroll?.scrollTop ?? 0;
 		c.empty();
 		c.addClass("tt-view");
 
@@ -104,6 +112,11 @@ export abstract class TaskTreeView extends ItemView {
 		try {
 			const model = await loadBoard(this.plugin, file);
 			this.renderBoard(c, model);
+			const nextScroll = c.querySelector<HTMLElement>(".tt-scroll");
+			if (nextScroll) {
+				nextScroll.scrollLeft = sx;
+				nextScroll.scrollTop = sy;
+			}
 		} catch (err) {
 			this.renderNotice(c, `Could not render board: ${(err as Error).message}`);
 		}
@@ -122,6 +135,7 @@ export abstract class TaskTreeView extends ItemView {
 		bar.createDiv({ cls: "tt-toolbar-title", text: title });
 
 		const actions = bar.createDiv({ cls: "tt-toolbar-actions" });
+		this.buildToolbarActions(actions, model);
 		const swap = actions.createEl("button", { cls: "tt-btn", attr: { "aria-label": "Open the other view" } });
 		setIcon(swap, this.otherViewType() === VIEW_TYPE_TREE ? "list-tree" : "layout-dashboard");
 		swap.createSpan({ text: this.otherViewType() === VIEW_TYPE_TREE ? "Tree" : "Kanban" });
@@ -131,9 +145,107 @@ export abstract class TaskTreeView extends ItemView {
 		return bar;
 	}
 
+	/** Hook for subclasses to add view-specific toolbar controls (left of the view-swap button). */
+	protected buildToolbarActions(_actions: HTMLElement, _model: BoardModel): void {
+		// base: no controls
+	}
+
 	protected openAtLine(model: BoardModel, line: number): void {
 		const leaf = this.app.workspace.getLeaf("tab");
 		void leaf.openFile(model.file, { eState: { line } });
+	}
+
+	protected boardTitle(model: BoardModel): string {
+		const t = this.app.metadataCache.getFileCache(model.file)?.frontmatter?.title;
+		return typeof t === "string" && t.length > 0 ? t : model.file.basename;
+	}
+
+	/** The dashboard strip: board title (rename on click), add-task, per-column counts, blocked flag. */
+	protected renderDashboardHeader(container: HTMLElement, model: BoardModel, opts: { compact?: boolean } = {}): void {
+		const head = container.createDiv({ cls: "tt-dash-header" });
+
+		const row = head.createDiv({ cls: "tt-dash-titlerow" });
+		const title = row.createEl(opts.compact ? "span" : "h2", {
+			cls: "tt-dash-title",
+			text: this.boardTitle(model),
+			attr: { "aria-label": "Rename board" },
+		});
+		this.registerDomEvent(title, "click", () => {
+			void (async () => {
+				const name = await promptText(this.app, {
+					title: "Rename board",
+					initial: this.boardTitle(model),
+					cta: "Rename",
+				});
+				if (name) {
+					await renameBoard(this.plugin, model.file, name);
+					this.rerender();
+				}
+			})();
+		});
+		const add = row.createEl("button", { cls: "tt-btn", attr: { "aria-label": "Add a task" } });
+		setIcon(add, "plus");
+		add.createSpan({ text: "Add task" });
+		this.registerDomEvent(add, "click", () => void addRootTask(this.plugin, model.file, model));
+
+		const tasks = flatten(model.roots).filter((n) => n.isTask);
+		const stats = head.createDiv({ cls: "tt-dash-stats" });
+		for (const col of model.columns) {
+			const count = tasks.filter((n) => placementColumn(n, model.columns)?.id === col.id).length;
+			const pill = stats.createSpan({ cls: "tt-stat" });
+			pill.setAttribute("data-role", col.role);
+			pill.createSpan({ cls: "tt-stat-n", text: String(count) });
+			pill.createSpan({ cls: "tt-stat-l", text: col.name });
+		}
+		const summary = computeSummary(model.roots);
+		const pct = summary.total > 0 ? Math.round((summary.done / summary.total) * 100) : 0;
+		const prog = stats.createSpan({ cls: "tt-stat tt-stat-progress" });
+		prog.createSpan({ cls: "tt-stat-n", text: `${pct}%` });
+		prog.createSpan({ cls: "tt-stat-l", text: "done" });
+
+		const blockers = collectBlockers(model.roots);
+		if (blockers.length > 0) {
+			const warn = head.createSpan({ cls: "tt-dash-blocked" });
+			setIcon(warn, "alert-triangle");
+			warn.createSpan({ text: `${blockers.length} blocked` });
+			if (opts.compact) {
+				warn.addClass("is-clickable");
+				this.registerDomEvent(warn, "click", () => {
+					if (this.filePath) void this.plugin.activateView(VIEW_TYPE_DASHBOARD, this.filePath);
+				});
+			}
+		}
+	}
+
+	/** The blockers + next-up panel — the "what is holding me up" surfacing. */
+	protected renderBlockersPanel(container: HTMLElement, model: BoardModel): void {
+		const panel = container.createDiv({ cls: "tt-panel" });
+		this.renderInsightList(panel, "Blockers", collectBlockers(model.roots), model, "Nothing blocked — clear runway.");
+		this.renderInsightList(panel, "Next up", collectNextUp(model.roots).slice(0, 8), model, "No open tasks.");
+	}
+
+	private renderInsightList(
+		panel: HTMLElement,
+		title: string,
+		items: Insight[],
+		model: BoardModel,
+		empty: string,
+	): void {
+		const sec = panel.createDiv({ cls: "tt-panel-sec" });
+		sec.createDiv({ cls: "tt-panel-title", text: items.length ? `${title} (${items.length})` : title });
+		if (items.length === 0) {
+			sec.createDiv({ cls: "tt-panel-empty", text: empty });
+			return;
+		}
+		for (const it of items) {
+			const rowEl = sec.createDiv({ cls: "tt-panel-item" });
+			rowEl.setAttribute("data-role", it.node.effectiveRole);
+			if (it.path.length > 0) {
+				rowEl.createSpan({ cls: "tt-breadcrumb", text: it.path.map((n) => n.text || "…").join(" › ") });
+			}
+			rowEl.createSpan({ cls: "tt-panel-item-text", text: it.node.text || "(untitled)" });
+			this.registerDomEvent(rowEl, "click", () => this.openAtLine(model, it.node.line));
+		}
 	}
 
 	// ---- placeholder states -------------------------------------------------

@@ -1,28 +1,48 @@
 import Sortable from "sortablejs";
-import { Menu, setIcon, type WorkspaceLeaf } from "obsidian";
+import { Menu, setIcon, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
 import { TaskTreeView, VIEW_TYPE_KANBAN, VIEW_TYPE_TREE } from "./base-view.ts";
 import type { BoardModel } from "../board-controller.ts";
-import { clearOverride, moveNode, writeOverride, writeStatus } from "../board-controller.ts";
+import {
+	addChildTask,
+	addSiblingTask,
+	addTagTask,
+	clearOverride,
+	deleteTask,
+	moveNode,
+	renameTask,
+	writeOverride,
+	writeStatus,
+} from "../board-controller.ts";
 import { flatten } from "../model/parser.ts";
 import { getIndentUnit } from "../settings.ts";
-import type { TaskNode } from "../model/types.ts";
+import type { TaskNode, TreeLayout } from "../model/types.ts";
 import type TaskTreePlugin from "../main.ts";
 import { createOverrideBadge, createProgressBadge, createStatusChip, placementColumn } from "./card.ts";
+import { confirmModal, promptText } from "./modals.ts";
+
+interface RowOptions {
+	toggle: "collapse" | "drill" | "none";
+	onActivate: () => void;
+}
 
 export class TreeView extends TaskTreeView {
 	private collapsed = new Set<string>();
 	private focusId: string | null = null;
+	private fullFocus = false;
+	private layout: TreeLayout;
+	private columnPath: string[] = [];
 	private byId = new Map<string, TaskNode>();
 
 	constructor(leaf: WorkspaceLeaf, plugin: TaskTreePlugin) {
 		super(leaf, plugin);
+		this.layout = plugin.settings.treeLayout;
 	}
 
 	getViewType(): string {
 		return VIEW_TYPE_TREE;
 	}
 	getDisplayText(): string {
-		return "Task Tree — Tree";
+		return this.fullFocus ? "Task Tree — Focus" : "Task Tree — Tree";
 	}
 	getIcon(): string {
 		return "list-tree";
@@ -31,33 +51,172 @@ export class TreeView extends TaskTreeView {
 		return VIEW_TYPE_KANBAN;
 	}
 
+	getState(): Record<string, unknown> {
+		return {
+			...super.getState(),
+			layout: this.layout,
+			focusId: this.focusId,
+			fullFocus: this.fullFocus,
+			columnPath: this.columnPath,
+		};
+	}
+
+	async setState(state: unknown, result: ViewStateResult): Promise<void> {
+		if (state && typeof state === "object") {
+			const s = state as Partial<{
+				layout: TreeLayout;
+				focusId: string | null;
+				fullFocus: boolean;
+				columnPath: string[];
+			}>;
+			if (s.layout === "list" || s.layout === "diagram" || s.layout === "columns") this.layout = s.layout;
+			if (typeof s.focusId === "string" || s.focusId === null) this.focusId = s.focusId ?? null;
+			if (typeof s.fullFocus === "boolean") this.fullFocus = s.fullFocus;
+			if (Array.isArray(s.columnPath)) {
+				this.columnPath = s.columnPath.filter((x): x is string => typeof x === "string");
+			}
+		}
+		await super.setState(state, result);
+	}
+
+	protected buildToolbarActions(actions: HTMLElement, _model: BoardModel): void {
+		const group = actions.createDiv({ cls: "tt-layout-switch" });
+		const defs: Array<[TreeLayout, string, string]> = [
+			["list", "list", "List"],
+			["diagram", "git-fork", "Diagram"],
+			["columns", "columns-3", "Columns"],
+		];
+		for (const [layout, icon, label] of defs) {
+			const btn = group.createEl("button", { cls: "tt-layout-btn", attr: { "aria-label": label } });
+			setIcon(btn, icon);
+			if (this.layout === layout) btn.addClass("is-active");
+			this.registerDomEvent(btn, "click", () => {
+				if (this.layout === layout) return;
+				this.layout = layout;
+				this.app.workspace.requestSaveLayout();
+				void this.render();
+			});
+		}
+	}
+
 	protected renderBoard(container: HTMLElement, model: BoardModel): void {
 		this.buildToolbar(container, model);
+		this.prepareModel(model);
+		if (!this.fullFocus) this.renderDashboardHeader(container, model, { compact: true });
+		const scroll = container.createDiv({ cls: "tt-tree tt-scroll" });
+		this.renderTreeBody(scroll, model);
+	}
+
+	protected prepareModel(model: BoardModel): void {
 		this.byId = new Map(flatten(model.roots).map((n) => [n.id, n]));
+	}
 
-		const scroll = container.createDiv({ cls: "tt-tree" });
-
+	/** Render the focus resolution + chosen layout into `scroll`. Reused by the Dashboard view. */
+	protected renderTreeBody(scroll: HTMLElement, model: BoardModel): void {
 		let roots = model.roots;
+		let focusNode: TaskNode | null = null;
 		if (this.focusId) {
-			const focus = this.byId.get(this.focusId);
-			if (focus) {
-				this.renderFocusBar(scroll, focus, model);
-				roots = [focus];
+			const f = this.byId.get(this.focusId);
+			if (f) {
+				focusNode = f;
+				roots = [f];
 			} else {
 				this.focusId = null;
 			}
 		}
 
+		if (this.fullFocus) {
+			scroll.addClass("tt-fullfocus");
+			if (focusNode) this.renderFocusHeader(scroll, focusNode, model);
+		}
+		if (focusNode) this.renderFocusBar(scroll, focusNode, model);
+
+		if (this.layout === "diagram") {
+			this.renderDiagram(scroll, roots, model);
+		} else if (this.layout === "columns") {
+			this.renderColumns(scroll, roots, model);
+		} else {
+			this.renderList(scroll, roots, model);
+			this.setupDnd(scroll, model);
+		}
+	}
+
+	// ---- shared row content --------------------------------------------------
+
+	private buildRowContent(host: HTMLElement, node: TaskNode, model: BoardModel, opts: RowOptions): void {
+		host.addClass("tt-node-body");
+		const hasChildren = node.children.length > 0;
+
+		const toggle = host.createSpan({ cls: "tt-toggle" });
+		if (opts.toggle === "collapse" && hasChildren) {
+			setIcon(toggle, this.collapsed.has(node.id) ? "chevron-right" : "chevron-down");
+			this.registerDomEvent(toggle, "click", (e) => {
+				e.stopPropagation();
+				this.toggleCollapse(node.id);
+			});
+		} else if (opts.toggle === "drill" && hasChildren) {
+			setIcon(toggle, "chevron-right");
+			toggle.addClass("tt-toggle-drill");
+		} else {
+			toggle.addClass("tt-toggle-empty");
+		}
+
+		if (node.isTask) {
+			const box = host.createEl("input", { type: "checkbox", cls: "tt-checkbox" });
+			box.checked = node.effectiveRole === "done";
+			this.registerDomEvent(box, "click", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				void this.cycle(node, model);
+			});
+		}
+
+		const text = host.createSpan({ cls: "tt-node-text", text: node.text || "(untitled)" });
+		if (node.effectiveRole === "done") text.addClass("tt-done");
+		this.registerDomEvent(text, "click", (e) => {
+			e.stopPropagation();
+			opts.onActivate();
+		});
+		this.registerDomEvent(text, "dblclick", (e) => {
+			e.stopPropagation();
+			void this.renamePrompt(node, model);
+		});
+
+		const meta = host.createDiv({ cls: "tt-node-meta" });
+		createStatusChip(meta, node, model.columns);
+		createProgressBadge(meta, node);
+		if (node.override) createOverrideBadge(meta, node.override);
+		if (node.hasBlockedDescendant) {
+			const warn = meta.createSpan({ cls: "tt-warn", attr: { "aria-label": "A subtask below is blocked" } });
+			setIcon(warn, "alert-triangle");
+		}
+
+		if (hasChildren) {
+			const focusBtn = meta.createSpan({ cls: "tt-focus-btn", attr: { "aria-label": "Open in full focus" } });
+			setIcon(focusBtn, "scan-search");
+			this.registerDomEvent(focusBtn, "click", (e) => {
+				e.stopPropagation();
+				this.startFullFocus(model, node.id);
+			});
+		}
+
+		this.registerDomEvent(host, "contextmenu", (e) => {
+			e.preventDefault();
+			this.nodeMenu(e, node, model);
+		});
+	}
+
+	// ---- layout: list --------------------------------------------------------
+
+	private renderList(scroll: HTMLElement, roots: TaskNode[], model: BoardModel): void {
 		const rootUl = scroll.createEl("ul", { cls: "tt-tree-list tt-root-list" });
 		rootUl.dataset.parentId = "";
 		rootUl.dataset.parentDepth = "-1";
 		rootUl.dataset.parentLine = String(model.bodyStart - 1);
-		for (const node of roots) this.renderNode(rootUl, node, model);
-
-		this.setupDnd(scroll, model);
+		for (const node of roots) this.renderListNode(rootUl, node, model);
 	}
 
-	private renderNode(ul: HTMLElement, node: TaskNode, model: BoardModel): void {
+	private renderListNode(ul: HTMLElement, node: TaskNode, model: BoardModel): void {
 		const li = ul.createEl("li", { cls: "tt-node" });
 		li.dataset.id = node.id;
 		li.dataset.line = String(node.line);
@@ -66,59 +225,110 @@ export class TreeView extends TaskTreeView {
 		li.setAttribute("data-task", node.statusChar);
 
 		const row = li.createDiv({ cls: "tt-row" });
-		const hasChildren = node.children.length > 0;
-
-		const toggle = row.createSpan({ cls: "tt-toggle" });
-		if (hasChildren) {
-			setIcon(toggle, this.collapsed.has(node.id) ? "chevron-right" : "chevron-down");
-			this.registerDomEvent(toggle, "click", (e) => {
-				e.stopPropagation();
-				this.toggleCollapse(node.id);
-			});
-		} else {
-			toggle.addClass("tt-toggle-empty");
-		}
-
-		if (node.isTask) {
-			const box = row.createEl("input", { type: "checkbox", cls: "tt-checkbox" });
-			box.checked = node.effectiveRole === "done";
-			this.registerDomEvent(box, "click", (e) => {
-				e.preventDefault();
-				void this.cycle(node, model);
-			});
-		}
-
-		const text = row.createSpan({ cls: "tt-node-text", text: node.text || "(untitled)" });
-		if (node.effectiveRole === "done") text.addClass("tt-done");
-		this.registerDomEvent(text, "click", () => this.openAtLine(model, node.line));
-
-		const meta = row.createDiv({ cls: "tt-node-meta" });
-		createStatusChip(meta, node, model.columns);
-		createProgressBadge(meta, node);
-		if (node.override) createOverrideBadge(meta, node.override);
-
-		if (hasChildren) {
-			const focusBtn = meta.createSpan({ cls: "tt-focus-btn", attr: { "aria-label": "Focus on this branch" } });
-			setIcon(focusBtn, "scan-search");
-			this.registerDomEvent(focusBtn, "click", (e) => {
-				e.stopPropagation();
-				this.focusId = node.id;
-				void this.render();
-			});
-		}
-
-		this.registerDomEvent(row, "contextmenu", (e) => {
-			e.preventDefault();
-			this.nodeMenu(e, node, model);
+		this.buildRowContent(row, node, model, {
+			toggle: "collapse",
+			onActivate: () => this.openAtLine(model, node.line),
 		});
 
-		if (hasChildren && !this.collapsed.has(node.id)) {
+		if (node.children.length > 0 && !this.collapsed.has(node.id)) {
 			const childUl = li.createEl("ul", { cls: "tt-tree-list" });
 			childUl.dataset.parentId = node.id;
 			childUl.dataset.parentDepth = String(node.depth);
 			childUl.dataset.parentLine = String(node.line);
-			for (const child of node.children) this.renderNode(childUl, child, model);
+			for (const child of node.children) this.renderListNode(childUl, child, model);
 		}
+	}
+
+	// ---- layout: diagram (horizontal tree) -----------------------------------
+
+	private renderDiagram(scroll: HTMLElement, roots: TaskNode[], model: BoardModel): void {
+		const canvas = scroll.createDiv({ cls: "tt-diagram" });
+		for (const node of roots) this.renderDiagramNode(canvas, node, model);
+	}
+
+	private renderDiagramNode(parent: HTMLElement, node: TaskNode, model: BoardModel): void {
+		const dnode = parent.createDiv({ cls: "tt-dnode" });
+		const box = dnode.createDiv({ cls: "tt-dbox" });
+		box.dataset.id = node.id;
+		box.setAttribute("data-task", node.statusChar);
+		this.buildRowContent(box, node, model, {
+			toggle: "collapse",
+			onActivate: () => this.openAtLine(model, node.line),
+		});
+		if (node.children.length > 0 && !this.collapsed.has(node.id)) {
+			const kids = dnode.createDiv({ cls: "tt-dchildren" });
+			for (const child of node.children) this.renderDiagramNode(kids, child, model);
+		}
+	}
+
+	// ---- layout: columns (Miller / drill-down) -------------------------------
+
+	private renderColumns(scroll: HTMLElement, roots: TaskNode[], model: BoardModel): void {
+		// Prune any selection ids that no longer exist (e.g. deleted by an edit).
+		const pruned: string[] = [];
+		for (const id of this.columnPath) {
+			if (this.byId.has(id)) pruned.push(id);
+			else break;
+		}
+		this.columnPath = pruned;
+
+		const wrap = scroll.createDiv({ cls: "tt-columns" });
+		this.renderColumnPane(wrap, roots, "Board", 0, model);
+
+		for (let i = 0; i < this.columnPath.length; i++) {
+			const parentId = this.columnPath[i];
+			if (!parentId) break;
+			const parentNode = this.byId.get(parentId);
+			if (!parentNode || parentNode.children.length === 0) break;
+			this.renderColumnPane(wrap, parentNode.children, parentNode.text || "…", i + 1, model);
+		}
+	}
+
+	private renderColumnPane(
+		wrap: HTMLElement,
+		items: TaskNode[],
+		header: string,
+		colIndex: number,
+		model: BoardModel,
+	): void {
+		const selectedId = this.columnPath[colIndex];
+		const pane = wrap.createDiv({ cls: "tt-column-pane" });
+		pane.createDiv({ cls: "tt-column-pane-head", text: header });
+		const body = pane.createDiv({ cls: "tt-column-pane-body" });
+		for (const node of items) {
+			const item = body.createDiv({ cls: "tt-col-item" });
+			item.dataset.id = node.id;
+			item.setAttribute("data-task", node.statusChar);
+			if (node.id === selectedId) item.addClass("is-selected");
+			this.buildRowContent(item, node, model, {
+				toggle: "drill",
+				onActivate: () => this.selectColumn(node, colIndex),
+			});
+			this.registerDomEvent(item, "click", () => this.selectColumn(node, colIndex));
+		}
+	}
+
+	private selectColumn(node: TaskNode, colIndex: number): void {
+		const path = this.columnPath.slice(0, colIndex);
+		path.push(node.id);
+		this.columnPath = path;
+		this.app.workspace.requestSaveLayout();
+		void this.render();
+	}
+
+	// ---- full focus ----------------------------------------------------------
+
+	private startFullFocus(model: BoardModel, id: string): void {
+		void this.plugin.activateFocusView(model.file.path, id);
+	}
+
+	private renderFocusHeader(container: HTMLElement, node: TaskNode, model: BoardModel): void {
+		const head = container.createDiv({ cls: "tt-fullfocus-header" });
+		head.createEl("h2", { cls: "tt-fullfocus-title", text: node.text || "(untitled)" });
+		const meta = head.createDiv({ cls: "tt-node-meta" });
+		createStatusChip(meta, node, model.columns);
+		createProgressBadge(meta, node);
+		if (node.override) createOverrideBadge(meta, node.override);
 	}
 
 	private renderFocusBar(container: HTMLElement, node: TaskNode, model: BoardModel): void {
@@ -126,6 +336,7 @@ export class TreeView extends TaskTreeView {
 		const exit = bar.createEl("button", { cls: "tt-btn", text: "All tasks" });
 		this.registerDomEvent(exit, "click", () => {
 			this.focusId = null;
+			this.app.workspace.requestSaveLayout();
 			void this.render();
 		});
 		const chain: TaskNode[] = [];
@@ -142,12 +353,15 @@ export class TreeView extends TaskTreeView {
 			const crumb = bar.createSpan({ cls: "tt-focus-crumb", text: anc.text || "…" });
 			this.registerDomEvent(crumb, "click", () => {
 				this.focusId = anc.id;
+				this.app.workspace.requestSaveLayout();
 				void this.render();
 			});
 		}
 		bar.createSpan({ cls: "tt-focus-sep", text: "›" });
 		bar.createSpan({ cls: "tt-focus-current", text: node.text || "…" });
 	}
+
+	// ---- interactions --------------------------------------------------------
 
 	private toggleCollapse(id: string): void {
 		if (this.collapsed.has(id)) this.collapsed.delete(id);
@@ -179,7 +393,7 @@ export class TreeView extends TaskTreeView {
 		const sibs = this.siblings(node, model);
 		const idx = sibs.findIndex((n) => n.id === node.id);
 		const prev = idx > 0 ? sibs[idx - 1] : undefined;
-		if (!prev) return; // nothing to indent under
+		if (!prev) return;
 		await moveNode(this.plugin, model.file, {
 			start: node.line,
 			end: node.lastDescLine,
@@ -192,7 +406,7 @@ export class TreeView extends TaskTreeView {
 	}
 
 	private async outdent(node: TaskNode, model: BoardModel): Promise<void> {
-		if (!node.parentId) return; // already at root
+		if (!node.parentId) return;
 		const parent = this.byId.get(node.parentId);
 		if (!parent) return;
 		await moveNode(this.plugin, model.file, {
@@ -243,7 +457,6 @@ export class TreeView extends TaskTreeView {
 			const toUl = evt.to as HTMLElement;
 			const newParentId = toUl.dataset.parentId ? toUl.dataset.parentId : null;
 
-			// Never drop a branch inside itself.
 			if (newParentId && this.subtreeIds(node).has(newParentId)) {
 				await this.render();
 				return;
@@ -314,14 +527,36 @@ export class TreeView extends TaskTreeView {
 		if (node.children.length > 0) {
 			menu.addItem((i) =>
 				i
-					.setTitle("Focus on this branch")
+					.setTitle("Open in full focus")
 					.setIcon("scan-search")
+					.onClick(() => this.startFullFocus(model, node.id)),
+			);
+			menu.addItem((i) =>
+				i
+					.setTitle("Focus here (in place)")
+					.setIcon("crosshair")
 					.onClick(() => {
 						this.focusId = node.id;
+						this.app.workspace.requestSaveLayout();
 						void this.render();
 					}),
 			);
 		}
+		menu.addSeparator();
+		menu.addItem((i) =>
+			i.setTitle("Add subtask").setIcon("plus").onClick(() => void addChildTask(this.plugin, model.file, node)),
+		);
+		menu.addItem((i) =>
+			i.setTitle("Add task below").setIcon("plus").onClick(() => void addSiblingTask(this.plugin, model.file, node)),
+		);
+		menu.addItem((i) =>
+			i.setTitle("Rename…").setIcon("pencil").onClick(() => void this.renamePrompt(node, model)),
+		);
+		menu.addItem((i) => i.setTitle("Add tag…").setIcon("tag").onClick(() => void this.tagPrompt(node, model)));
+		menu.addItem((i) =>
+			i.setTitle("Delete task").setIcon("trash").onClick(() => void this.deletePrompt(node, model)),
+		);
+		menu.addSeparator();
 		menu.addItem((i) =>
 			i
 				.setTitle("Open note")
@@ -329,5 +564,27 @@ export class TreeView extends TaskTreeView {
 				.onClick(() => this.openAtLine(model, node.line)),
 		);
 		menu.showAtMouseEvent(e);
+	}
+
+	private async renamePrompt(node: TaskNode, model: BoardModel): Promise<void> {
+		const name = await promptText(this.app, { title: "Rename task", initial: node.text, cta: "Rename" });
+		if (name) await renameTask(this.plugin, model.file, node, name);
+	}
+
+	private async tagPrompt(node: TaskNode, model: BoardModel): Promise<void> {
+		const tag = await promptText(this.app, { title: "Add tag", placeholder: "e.g. urgent", cta: "Add tag" });
+		if (tag) await addTagTask(this.plugin, model.file, node, tag);
+	}
+
+	private async deletePrompt(node: TaskNode, model: BoardModel): Promise<void> {
+		const ok =
+			node.children.length > 0
+				? await confirmModal(this.app, {
+						title: "Delete task and its subtasks?",
+						body: `"${node.text}" and everything under it will be removed.`,
+						cta: "Delete",
+					})
+				: true;
+		if (ok) await deleteTask(this.plugin, model.file, node);
 	}
 }

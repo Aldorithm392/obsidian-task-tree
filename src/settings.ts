@@ -1,6 +1,6 @@
 import { PluginSettingTab, Setting, type App } from "obsidian";
 import type TaskTreePlugin from "./main.ts";
-import type { ColumnDef, Role } from "./model/types.ts";
+import type { ColumnDef, Role, TreeLayout } from "./model/types.ts";
 import { ALL_ROLES } from "./model/types.ts";
 import { DEFAULT_COLUMNS, validateColumns } from "./columns.ts";
 
@@ -15,6 +15,7 @@ export interface TaskTreeSettings {
 	autoAssignIds: boolean;
 	parentAutoSync: boolean;
 	maintainTimestamp: boolean;
+	treeLayout: TreeLayout;
 }
 
 export const DEFAULT_SETTINGS: TaskTreeSettings = {
@@ -28,6 +29,7 @@ export const DEFAULT_SETTINGS: TaskTreeSettings = {
 	autoAssignIds: true,
 	parentAutoSync: false,
 	maintainTimestamp: false,
+	treeLayout: "list",
 };
 
 /** The indentation unit used when the plugin writes moved or new lines. */
@@ -78,6 +80,21 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}),
 			);
+
+		new Setting(containerEl).setName("Tree view").setHeading();
+
+		new Setting(containerEl)
+			.setName("Default layout")
+			.setDesc("How the tree is drawn when a board opens. Each open tree can also be switched from its toolbar.")
+			.addDropdown((d) => {
+				d.addOption("list", "List (vertical)");
+				d.addOption("diagram", "Diagram (horizontal)");
+				d.addOption("columns", "Columns (drill-down)");
+				d.setValue(this.plugin.settings.treeLayout).onChange(async (v) => {
+					this.plugin.settings.treeLayout = v as TreeLayout;
+					await this.plugin.saveSettings();
+				});
+			});
 
 		new Setting(containerEl).setName("Writing").setHeading();
 
