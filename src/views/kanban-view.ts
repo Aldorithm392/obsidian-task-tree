@@ -7,9 +7,11 @@ import {
 	addTagTask,
 	clearOverride,
 	deleteTask,
+	openOrCreateTaskNote,
 	renameTask,
 	writeOverride,
 	writeStatus,
+	type TaskNoteMeta,
 } from "../board-controller.ts";
 import { flatten } from "../model/parser.ts";
 import type { ColumnDef, TaskNode } from "../model/types.ts";
@@ -101,6 +103,12 @@ export class KanbanView extends TaskTreeView {
 			const warn = meta.createSpan({ cls: "tt-warn", attr: { "aria-label": "A subtask below is blocked" } });
 			setIcon(warn, "alert-triangle");
 		}
+		const noteBtn = meta.createSpan({ cls: "tt-row-btn tt-note-btn", attr: { "aria-label": "Open / create the task's note" } });
+		setIcon(noteBtn, "file-text");
+		this.registerDomEvent(noteBtn, "click", (e) => {
+			e.stopPropagation();
+			this.openTaskNote(node, model);
+		});
 		const addBtn = meta.createSpan({ cls: "tt-row-btn tt-add-btn", attr: { "aria-label": "Add subtask" } });
 		setIcon(addBtn, "plus");
 		this.registerDomEvent(addBtn, "click", (e) => {
@@ -180,12 +188,27 @@ export class KanbanView extends TaskTreeView {
 		);
 		menu.addSeparator();
 		menu.addItem((i) =>
-			i
-				.setTitle("Open note")
-				.setIcon("file")
-				.onClick(() => this.openAtLine(model, node.line)),
+			i.setTitle("Open / create note").setIcon("file-text").onClick(() => this.openTaskNote(node, model)),
+		);
+		menu.addItem((i) =>
+			i.setTitle("Reveal in board").setIcon("file").onClick(() => this.openAtLine(model, node.line)),
 		);
 		menu.showAtMouseEvent(e);
+	}
+
+	private openTaskNote(node: TaskNode, model: BoardModel): void {
+		const path: string[] = [];
+		let pid = node.parentId;
+		let guard = 0;
+		while (pid && guard++ < 50) {
+			const p = this.byId.get(pid);
+			if (!p) break;
+			path.unshift(p.text);
+			pid = p.parentId;
+		}
+		const parent = node.parentId ? this.byId.get(node.parentId) : undefined;
+		const meta: TaskNoteMeta = { depth: node.depth, path, parentText: parent ? parent.text : null };
+		void openOrCreateTaskNote(this.plugin, model, node, meta);
 	}
 
 	private async renamePrompt(node: TaskNode, model: BoardModel): Promise<void> {

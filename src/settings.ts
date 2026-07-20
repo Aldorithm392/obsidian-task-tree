@@ -17,6 +17,8 @@ export interface TaskTreeSettings {
 	maintainTimestamp: boolean;
 	treeLayout: TreeLayout;
 	showBoardStats: boolean;
+	/** Folder for notes the plugin creates for a task. Empty = next to the board. */
+	taskNoteFolder: string;
 }
 
 export const DEFAULT_SETTINGS: TaskTreeSettings = {
@@ -32,6 +34,7 @@ export const DEFAULT_SETTINGS: TaskTreeSettings = {
 	maintainTimestamp: false,
 	treeLayout: "list",
 	showBoardStats: false,
+	taskNoteFolder: "",
 };
 
 /** The indentation unit used when the plugin writes moved or new lines. */
@@ -165,6 +168,21 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 					this.plugin.settings.maintainTimestamp = v;
 					await this.plugin.saveSettings();
 				}),
+			);
+
+		new Setting(containerEl).setName("Task notes").setHeading();
+
+		new Setting(containerEl)
+			.setName("Task-note folder")
+			.setDesc('Folder where "open note for this task" creates notes. Leave empty to create them next to the board.')
+			.addText((t) =>
+				t
+					.setPlaceholder("e.g. Tasks")
+					.setValue(this.plugin.settings.taskNoteFolder)
+					.onChange(async (v) => {
+						this.plugin.settings.taskNoteFolder = v.replace(/^\/+|\/+$/g, "").trim();
+						await this.plugin.saveSettings();
+					}),
 			);
 	}
 

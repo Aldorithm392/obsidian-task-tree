@@ -171,6 +171,91 @@ export async function renameBoard(plugin: TaskTreePlugin, file: TFile, title: st
 	});
 }
 
+// ---- task = note -----------------------------------------------------------
+
+export interface TaskNoteMeta {
+	/** Depth in the tree (0 = root). Also the distance to the main task. */
+	depth: number;
+	/** Ancestor texts, root-most first (excludes the node itself). */
+	path: string[];
+	parentText: string | null;
+}
+
+const FILE_UNSAFE = /[\\/:*?"<>|#^[\]]/g;
+function sanitizeFileName(name: string): string {
+	return name.replace(FILE_UNSAFE, " ").replace(/\s+/g, " ").trim().slice(0, 100);
+}
+
+const WIKILINK_RE = /\[\[([^\]|#]+)(?:\|[^\]]+)?\]\]/;
+
+function cleanTitle(text: string): string {
+	return text.replace(/\[\[|\]\]/g, "").replace(/\s+/g, " ").trim();
+}
+
+/** The self-describing frontmatter + body for a task's own note (an OKF concept). */
+function taskNoteContent(node: TaskNode, meta: TaskNoteMeta, boardName: string, noteName: string): string {
+	const title = cleanTitle(node.text) || noteName;
+	const lines = [
+		"---",
+		"type: task-note",
+		`title: ${title}`,
+		`board: "[[${boardName}]]"`,
+		`parent: ${meta.parentText ? cleanTitle(meta.parentText) : "(root)"}`,
+		`depth: ${meta.depth}`,
+		`distance_to_main: ${meta.depth}`,
+		`path: ${[...meta.path.map(cleanTitle), title].join(" / ")}`,
+	];
+	if (node.hasStoredId) lines.push(`task_id: ${node.id}`);
+	lines.push("---", "", `# ${title}`, "", "## Progress", "", "## Status", "", "## Notes", "");
+	return lines.join("\n");
+}
+
+/**
+ * Open the task's own note, creating it (with structural frontmatter) and linking the task to it
+ * if it doesn't have one yet. This is the "task = note" feature.
+ */
+export async function openOrCreateTaskNote(
+	plugin: TaskTreePlugin,
+	model: BoardModel,
+	node: TaskNode,
+	meta: TaskNoteMeta,
+): Promise<void> {
+	const { app } = plugin;
+
+	// Already linked → just open it (Obsidian creates it if missing).
+	const linked = WIKILINK_RE.exec(node.text);
+	if (linked && linked[1]) {
+		await app.workspace.openLinkText(linked[1].trim(), model.file.path, true);
+		return;
+	}
+
+	const parentPath = model.file.parent?.path ?? "";
+	const boardFolder = parentPath === "/" ? "" : parentPath;
+	const folder = plugin.settings.taskNoteFolder.trim() || boardFolder;
+	const base = sanitizeFileName(cleanTitle(node.text)) || node.id;
+
+	let name = base;
+	let path = folder ? `${folder}/${name}.md` : `${name}.md`;
+	let n = 2;
+	while (app.vault.getAbstractFileByPath(path)) {
+		name = `${base} ${n++}`;
+		path = folder ? `${folder}/${name}.md` : `${name}.md`;
+	}
+
+	if (folder && !app.vault.getAbstractFileByPath(folder)) {
+		try {
+			await app.vault.createFolder(folder);
+		} catch {
+			// already exists / race — ignore
+		}
+	}
+
+	const created = await app.vault.create(path, taskNoteContent(node, meta, model.file.basename, name));
+	await app.vault.process(model.file, (d) => setTaskTextInText(d, node.line, `${node.text} [[${name}]]`));
+	await touch(plugin, model.file);
+	await app.workspace.getLeaf("tab").openFile(created);
+}
+
 async function touch(plugin: TaskTreePlugin, file: TFile): Promise<void> {
 	if (!plugin.settings.maintainTimestamp) return;
 	try {
