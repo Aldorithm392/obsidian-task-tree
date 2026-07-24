@@ -164,8 +164,15 @@ surface both you and your assistant can operate — no export, no sync, no secon
 
 ## Install
 
-**From this repo (manual):** copy `main.js`, `manifest.json`, and `styles.css` into
-`<your-vault>/.obsidian/plugins/task-tree/`, then enable it in **Settings → Community plugins**.
+**Via BRAT (recommended until the community listing is live):** install the
+[BRAT](https://obsidian.md/plugins?id=obsidian42-brat) plugin, run its command
+**"Add a beta plugin"**, and paste `Aldorithm392/obsidian-task-tree`. BRAT installs the latest
+release and keeps it updated.
+
+**Manual:** download `main.js`, `manifest.json`, and `styles.css` from the
+[latest release](https://github.com/Aldorithm392/obsidian-task-tree/releases/latest) into
+`<your-vault>/.obsidian/plugins/task-tree/`, then enable **Task Tree** in
+**Settings → Community plugins**.
 
 **Build from source:**
 
