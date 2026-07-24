@@ -133,7 +133,7 @@ export class KanbanView extends TaskTreeView {
 		setIcon(addBtn, "plus");
 		this.registerDomEvent(addBtn, "click", (e) => {
 			e.stopPropagation();
-			void addChildTask(this.plugin, model, node);
+			void addChildTask(this.plugin, model, node).then((l) => this.queueEditAt(l));
 		});
 
 		this.registerDomEvent(card, "contextmenu", (e) => {
@@ -197,7 +197,10 @@ export class KanbanView extends TaskTreeView {
 		}
 		menu.addSeparator();
 		menu.addItem((i) =>
-			i.setTitle("Add subtask").setIcon("plus").onClick(() => void addChildTask(this.plugin, model, node)),
+			i
+				.setTitle("Add subtask")
+				.setIcon("plus")
+				.onClick(() => void addChildTask(this.plugin, model, node).then((l) => this.queueEditAt(l))),
 		);
 		menu.addItem((i) =>
 			i.setTitle("Rename…").setIcon("pencil").onClick(() => void this.renamePrompt(node, model)),

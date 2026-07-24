@@ -183,6 +183,9 @@
 }
 .tt-root-list {
 	padding-left: 4px;
+	/* Keep chips and hover actions within eye- and mouse-reach of the text on wide
+	   panes — an uncapped row pins them to the far window edge (proximity + Fitts). */
+	max-width: 920px;
 }
 .tt-node {
 	position: relative;
@@ -678,8 +681,10 @@ h2.tt-dash-title {
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-s);
 	background: var(--background-secondary);
-	/* Long titles wrap inside a bounded box instead of stretching the whole diagram. */
-	max-width: 420px;
+	/* Long titles wrap inside a bounded box instead of stretching the whole diagram;
+	   width: max-content stops the flex row from squeezing parents to slivers. */
+	width: max-content;
+	max-width: 480px;
 	white-space: normal;
 }
 .tt-dbox .tt-node-text {
@@ -692,6 +697,7 @@ h2.tt-dash-title {
 	gap: 8px;
 	padding-left: var(--tt-connector, 28px);
 	position: relative;
+	flex-shrink: 0; /* the child column never squeezes its parent's box */
 }
 .tt-dchildren::before {
 	content: "";

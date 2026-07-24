@@ -280,7 +280,7 @@ export class TreeView extends TaskTreeView {
 		setIcon(addBtn, "plus");
 		this.registerDomEvent(addBtn, "click", (e) => {
 			e.stopPropagation();
-			void addChildTask(this.plugin, model, node);
+			void addChildTask(this.plugin, model, node).then((l) => this.queueEditAt(l));
 		});
 		const delBtn = meta.createSpan({ cls: "tt-row-btn tt-del-btn", attr: { "aria-label": "Delete task" } });
 		setIcon(delBtn, "trash-2");
@@ -390,17 +390,42 @@ export class TreeView extends TaskTreeView {
 			const to = boxOf(e.from.id); // …and points at the task waiting on it
 			if (!from || !to) continue; // collapsed / focused out of view
 
-			const leftToRight = to.left + to.width / 2 >= from.left + from.width / 2;
-			const x1 = (leftToRight ? from.right : from.left) - origin.left;
-			const y1 = from.top + from.height / 2 - origin.top;
-			const x2 = (leftToRight ? to.left : to.right) - origin.left;
-			const y2 = to.top + to.height / 2 - origin.top;
-			const bend = Math.max(24, Math.abs(x2 - x1) / 2);
-			const c1 = leftToRight ? x1 + bend : x1 - bend;
-			const c2 = leftToRight ? x2 - bend : x2 + bend;
+			// Anchor by the REAL gap between boxes, not by centers: overlapping-on-an-axis
+			// pairs (a parent and its stacked child) must anchor on the other axis, or the
+			// control points loop the curve straight through the boxes.
+			const gapRight = to.left - from.right; // to sits right of from
+			const gapLeft = from.left - to.right; // to sits left of from
+			const gapDown = to.top - from.bottom; // to sits below from
+			const gapUp = from.top - to.bottom; // to sits above from
+			const hGap = Math.max(gapRight, gapLeft);
+			const vGap = Math.max(gapDown, gapUp);
+			let d: string;
+			let x2: number;
+			let y2: number;
+			if (hGap >= vGap && hGap > -8) {
+				const ltr = gapRight >= gapLeft;
+				const x1 = (ltr ? from.right : from.left) - origin.left;
+				const y1 = from.top + from.height / 2 - origin.top;
+				x2 = (ltr ? to.left : to.right) - origin.left;
+				y2 = to.top + to.height / 2 - origin.top;
+				const bend = Math.min(80, Math.max(12, Math.abs(x2 - x1) / 2));
+				const c1 = ltr ? x1 + bend : x1 - bend;
+				const c2 = ltr ? x2 - bend : x2 + bend;
+				d = `M ${x1} ${y1} C ${c1} ${y1}, ${c2} ${y2}, ${x2} ${y2}`;
+			} else {
+				const ttb = gapDown >= gapUp;
+				const x1 = from.left + from.width / 2 - origin.left;
+				const y1 = (ttb ? from.bottom : from.top) - origin.top;
+				x2 = to.left + to.width / 2 - origin.left;
+				y2 = (ttb ? to.top : to.bottom) - origin.top;
+				const bend = Math.min(60, Math.max(10, Math.abs(y2 - y1) / 2));
+				const c1 = ttb ? y1 + bend : y1 - bend;
+				const c2 = ttb ? y2 - bend : y2 + bend;
+				d = `M ${x1} ${y1} C ${x1} ${c1}, ${x2} ${c2}, ${x2} ${y2}`;
+			}
 
 			const path = document.createElementNS(SVG_NS, "path");
-			path.setAttribute("d", `M ${x1} ${y1} C ${c1} ${y1}, ${c2} ${y2}, ${x2} ${y2}`);
+			path.setAttribute("d", d);
 			path.classList.add("tt-dep-edge");
 			const released = e.to.effectiveRole === "done" || e.to.effectiveRole === "cancelled";
 			if (!released) path.classList.add("is-held");
@@ -944,10 +969,16 @@ export class TreeView extends TaskTreeView {
 		}
 		menu.addSeparator();
 		menu.addItem((i) =>
-			i.setTitle("Add subtask").setIcon("plus").onClick(() => void addChildTask(this.plugin, model, node)),
+			i
+				.setTitle("Add subtask")
+				.setIcon("plus")
+				.onClick(() => void addChildTask(this.plugin, model, node).then((l) => this.queueEditAt(l))),
 		);
 		menu.addItem((i) =>
-			i.setTitle("Add task below").setIcon("plus").onClick(() => void addSiblingTask(this.plugin, model, node)),
+			i
+				.setTitle("Add task below")
+				.setIcon("plus")
+				.onClick(() => void addSiblingTask(this.plugin, model, node).then((l) => this.queueEditAt(l))),
 		);
 		menu.addItem((i) =>
 			i.setTitle("Rename…").setIcon("pencil").onClick(() => void this.renamePrompt(node, model)),

@@ -11,6 +11,8 @@ import {
 import type TaskTreePlugin from "../main.ts";
 import {
 	addRootTask,
+	addSiblingTask,
+	deleteTask,
 	ensureIds,
 	loadBoard,
 	renameBoard,
@@ -138,9 +140,32 @@ export abstract class TaskTreeView extends ItemView {
 				nextScroll.scrollLeft = sx;
 				nextScroll.scrollTop = sy;
 			}
+			this.consumePendingEdit(c, model);
 		} catch (err) {
 			this.renderNotice(c, `Could not render board: ${(err as Error).message}`);
 		}
+	}
+
+	/** A line queued for immediate inline editing on the next render (freshly added tasks). */
+	private pendingEdit: { line: number; isNew: boolean } | null = null;
+
+	/** Queue the task at `line` to open in edit mode as soon as the board re-renders. */
+	protected queueEditAt(line: number, isNew = true): void {
+		this.pendingEdit = { line, isNew };
+	}
+
+	/** If an add queued an edit, find the new row and drop straight into typing. */
+	private consumePendingEdit(container: HTMLElement, model: BoardModel): void {
+		const pending = this.pendingEdit;
+		if (!pending) return;
+		this.pendingEdit = null;
+		const node = flatten(model.roots).find((n) => n.isTask && n.line === pending.line);
+		if (!node) return;
+		const rowEl = container.querySelector<HTMLElement>(`[data-line="${pending.line}"]`);
+		const textEl = rowEl?.querySelector<HTMLElement>(".tt-node-text, .tt-card-text");
+		if (!textEl) return;
+		textEl.scrollIntoView({ block: "nearest" });
+		this.startInlineEdit(textEl, node, model, { isNew: pending.isNew });
 	}
 
 	protected abstract renderBoard(container: HTMLElement, model: BoardModel): void;
@@ -162,7 +187,9 @@ export abstract class TaskTreeView extends ItemView {
 		const add = actions.createEl("button", { cls: "tt-btn", attr: { "aria-label": "Add a task" } });
 		setIcon(add, "plus");
 		add.createSpan({ text: "Add task" });
-		this.registerDomEvent(add, "click", () => void addRootTask(this.plugin, model));
+		this.registerDomEvent(add, "click", () =>
+			void addRootTask(this.plugin, model).then((l) => this.queueEditAt(l)),
+		);
 		const swap = actions.createEl("button", { cls: "tt-btn", attr: { "aria-label": "Open the other view" } });
 		setIcon(swap, this.otherViewType() === VIEW_TYPE_TREE ? "list-tree" : "layout-dashboard");
 		swap.createSpan({ text: this.otherViewType() === VIEW_TYPE_TREE ? "Tree" : "Kanban" });
@@ -197,8 +224,19 @@ export abstract class TaskTreeView extends ItemView {
 		};
 	}
 
-	/** Edit a task's text in place: swap the text span for an input; Enter/blur saves, Esc cancels. */
-	protected startInlineEdit(textEl: HTMLElement, node: TaskNode, model: BoardModel): void {
+	/**
+	 * Edit a task's text in place: swap the text span for an input; Enter/blur saves,
+	 * Esc cancels. A freshly-added task (isNew) behaves like a capture flow: Enter
+	 * saves AND spawns the next sibling already in edit mode (chain-add), while
+	 * leaving it untouched (Esc / empty / blur without typing) removes the
+	 * placeholder — no "New task" litter.
+	 */
+	protected startInlineEdit(
+		textEl: HTMLElement,
+		node: TaskNode,
+		model: BoardModel,
+		opts: { isNew?: boolean } = {},
+	): void {
 		if (this.editing) return;
 		const parent = textEl.parentElement;
 		if (!parent) return;
@@ -214,16 +252,26 @@ export abstract class TaskTreeView extends ItemView {
 		input.select();
 
 		let settled = false;
-		const finish = (commit: boolean): void => {
+		const finish = (commit: boolean, viaEnter = false): void => {
 			if (settled) return;
 			settled = true;
 			this.editing = false;
-			if (commit) {
-				const value = input.value.trim();
-				if (value.length > 0 && value !== base) {
-					void renameTask(this.plugin, model.file, node, value + suffix);
-					return; // the write triggers a fresh re-render
-				}
+			const value = input.value.trim();
+			const changed = value.length > 0 && value !== base;
+			if (opts.isNew && !changed) {
+				// Abandoned placeholder — take the whole "New task" line back out.
+				void deleteTask(this.plugin, model.file, node);
+				return; // the write triggers a fresh re-render
+			}
+			if (commit && changed) {
+				void (async () => {
+					await renameTask(this.plugin, model.file, node, value + suffix);
+					if (opts.isNew && viaEnter) {
+						// Capture flow: keep the chain going — next sibling, already editing.
+						this.queueEditAt(await addSiblingTask(this.plugin, model, node));
+					}
+				})();
+				return; // the write triggers a fresh re-render
 			}
 			this.rerender();
 		};
@@ -231,7 +279,7 @@ export abstract class TaskTreeView extends ItemView {
 		this.registerDomEvent(input, "keydown", (e) => {
 			if (e.key === "Enter") {
 				e.preventDefault();
-				finish(true);
+				finish(true, true);
 			} else if (e.key === "Escape") {
 				e.preventDefault();
 				finish(false);
@@ -306,7 +354,9 @@ export abstract class TaskTreeView extends ItemView {
 		const add = row.createEl("button", { cls: "tt-btn", attr: { "aria-label": "Add a task" } });
 		setIcon(add, "plus");
 		add.createSpan({ text: "Add task" });
-		this.registerDomEvent(add, "click", () => void addRootTask(this.plugin, model));
+		this.registerDomEvent(add, "click", () =>
+			void addRootTask(this.plugin, model).then((l) => this.queueEditAt(l)),
+		);
 
 		const tasks = flatten(model.roots).filter((n) => n.isTask);
 		const stats = head.createDiv({ cls: "tt-dash-stats" });

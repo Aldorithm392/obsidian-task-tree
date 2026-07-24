@@ -168,26 +168,30 @@ export async function moveNode(
 
 const NEW_TASK_TEXT = "New task";
 
-export async function addChildTask(plugin: TaskTreePlugin, model: BoardModel, parent: TaskNode): Promise<void> {
+/** Each add* returns the LINE the new task landed on, so a view can drop straight into editing it. */
+export async function addChildTask(plugin: TaskTreePlugin, model: BoardModel, parent: TaskNode): Promise<number> {
 	const indent = parent.indentText + model.indentUnit; // one more level, in the file's own style
 	await plugin.app.vault.process(model.file, (d) =>
 		insertTaskInText(d, parent.lastDescLine, indent, NEW_TASK_TEXT),
 	);
 	await touch(plugin, model.file);
+	return parent.lastDescLine + 1;
 }
 
-export async function addSiblingTask(plugin: TaskTreePlugin, model: BoardModel, node: TaskNode): Promise<void> {
+export async function addSiblingTask(plugin: TaskTreePlugin, model: BoardModel, node: TaskNode): Promise<number> {
 	await plugin.app.vault.process(model.file, (d) =>
 		insertTaskInText(d, node.lastDescLine, node.indentText, NEW_TASK_TEXT),
 	);
 	await touch(plugin, model.file);
+	return node.lastDescLine + 1;
 }
 
-export async function addRootTask(plugin: TaskTreePlugin, model: BoardModel): Promise<void> {
+export async function addRootTask(plugin: TaskTreePlugin, model: BoardModel): Promise<number> {
 	const lastRoot = model.roots[model.roots.length - 1];
 	const after = lastRoot ? lastRoot.lastDescLine : model.bodyStart - 1;
 	await plugin.app.vault.process(model.file, (d) => insertTaskInText(d, after, "", NEW_TASK_TEXT));
 	await touch(plugin, model.file);
+	return after + 1;
 }
 
 export async function deleteTask(plugin: TaskTreePlugin, file: TFile, node: TaskNode): Promise<void> {
@@ -263,8 +267,7 @@ function boardFileContent(title: string, unit: string): string {
 		`title: ${JSON.stringify(title)}`,
 		"---",
 		"",
-		`# ${title}`,
-		"",
+		// No body H1: the inline title / view header already carries the name.
 		"- [ ] First task",
 		`${unit}- [ ] A subtask`,
 		"- [ ] Second task",
@@ -339,7 +342,9 @@ function taskNoteContent(node: TaskNode, meta: TaskNoteMeta, boardName: string, 
 		`path: ${JSON.stringify([...meta.path.map(stripLinks), title].join(" / "))}`,
 	];
 	if (node.hasStoredId) lines.push(`task_id: ${node.id}`);
-	lines.push("---", "", `# ${title}`, "", "## Progress", "", "## Status", "", "## Notes", "");
+	// No body H1: Obsidian's inline title already shows the note name — an H1 would
+	// render the title twice, stacked. The frontmatter `title` carries it for agents.
+	lines.push("---", "", "## Progress", "", "## Status", "", "## Notes", "");
 	return lines.join("\n");
 }
 
