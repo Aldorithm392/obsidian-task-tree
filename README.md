@@ -38,8 +38,9 @@ itself, it hands you a canvas and trusts your method. There is exactly one thing
 > organize however you like — but any choice a reader (human *or* AI) can't infer from universal
 > Markdown convention is written down *in the file*: non-standard columns live in the board's own
 > frontmatter, and a deliberately overridden state is marked with a visible `[tt-override:: …]` right
-> on the task. Task Tree writes only three things to a task line — its status character, its `^id`,
-> and (on override) that marker — and leaves everything else verbatim.
+> on the task. Task Tree writes only four things to a task line — its status character, its `^id`,
+> (on override) that marker, and (on request) a `[tt-blocked-by:: …]` dependency — and leaves
+> everything else verbatim.
 
 That's the whole contract. **Total freedom — but announced, not assumed.** If you also point an AI
 agent (e.g. Claude Code) at your vault and you've overridden the default behavior by hand, just tell
@@ -73,6 +74,11 @@ tags: [project, marketing]
 - **Two gestures, kept apart.** Dragging a card between **Kanban columns** changes only that node's
   state (children don't travel). Dragging a node in the **tree** restructures it (the whole branch
   travels). See [`docs/03_FORMAT_SPEC.md`](docs/03_FORMAT_SPEC.md).
+- **Dependencies across the tree.** `[tt-blocked-by:: t-aa10]` connects a task to the tasks it waits
+  on — anywhere on the board, not just its siblings. Right-click → "Blocked by…" to wire one; a badge
+  shows what's held, the dashboard lists everything "waiting on dependencies", and the diagram layout
+  draws the edges as dashed curves. Dependencies are a *signal*: they never change a parent's derived
+  state, so roll-up stays honest.
 
 ---
 
@@ -121,13 +127,16 @@ Obsidian/Tasks convention.
 - Open current file as dashboard
 - Open current file as Kanban board
 - Open current file as tree
-- Convert current file to a Task Tree board
+- Create a new board
+- Convert current file to a board
 - Assign block IDs to all tasks in current file
-- Open a Task Tree board… (picker)
+- Open a board… (picker)
+- Build the boards index (`index.md`)
+- Append an entry to the boards log (`log.md`)
 
 ---
 
-## Works nicely with AI agents (a property, not a moat)
+## Works with your AI assistant (a property, not a moat)
 
 Because the format is clean, hierarchical Markdown, any agent can already read it — and Task Tree's
 job is simply *not to break that*. The convention deliberately follows the methodology of Google
@@ -135,6 +144,21 @@ Cloud's [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge
 board is an OKF *concept* (frontmatter + body), a vault of boards is an OKF *bundle*, and parent state
 is deterministically recomputable from the leaves — so an agent only ever needs to read and write the
 leaves. Details in [`docs/04_OKF_AND_AGENTS.md`](docs/04_OKF_AND_AGENTS.md).
+
+Task Tree ships that promise as working material, not prose:
+
+- **[`AGENTS.md`](AGENTS.md)** — the operating contract an agent follows to work a board *with* you:
+  the opt-in gate, the grammar, roll-up it can recompute itself, the invariants it must never break,
+  and the division of labor (you own intent and structure; it works the leaves and reports in tasks).
+- **[`docs/agent/CONTRACT.md`](docs/agent/CONTRACT.md)** — the machine-readable version: regexes,
+  role tables, reserved fields. Its examples are parsed by the real parser in CI, so it cannot drift.
+- **[`skills/task-tree/`](skills/task-tree/)** — an installable skill for Claude Code (copy to
+  `~/.claude/skills/task-tree/`) with ready recipes: survey every board in a vault, report status,
+  "what's blocked and why", decompose a goal into subtasks, mark work done and explain what rolled up,
+  build a board from existing project docs.
+
+If you keep a project's documentation as Markdown in Obsidian, this turns the same files into a task
+surface both you and your assistant can operate — no export, no sync, no second source of truth.
 
 ---
 

@@ -297,7 +297,7 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 		const errors = validateColumns(cols);
 		if (errors.length > 0) {
 			const warn = containerEl.createDiv({ cls: "tt-settings-warning" });
-			for (const e of errors) warn.createEl("div", { text: "⚠ " + e });
+			for (const e of errors) warn.createDiv({ text: "⚠ " + e });
 		}
 
 		new Setting(containerEl).addButton((b) =>

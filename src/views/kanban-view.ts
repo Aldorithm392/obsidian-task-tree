@@ -147,8 +147,8 @@ export class KanbanView extends TaskTreeView {
 
 	private async onDrop(evt: Sortable.SortableEvent, model: BoardModel): Promise<void> {
 		if (evt.to === evt.from) return;
-		const id = (evt.item as HTMLElement).dataset.id;
-		const colId = (evt.to as HTMLElement).dataset.colId;
+		const id = (evt.item).dataset.id;
+		const colId = (evt.to).dataset.colId;
 		if (!id || !colId) return;
 		const node = this.byId.get(id);
 		const col = model.columns.find((c) => c.id === colId);

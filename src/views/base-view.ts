@@ -122,7 +122,7 @@ export abstract class TaskTreeView extends ItemView {
 			return;
 		}
 		const cache = this.app.metadataCache.getFileCache(file);
-		if (!isManagedFrontmatter(cache?.frontmatter as Record<string, unknown> | undefined)) {
+		if (!isManagedFrontmatter(cache?.frontmatter)) {
 			this.renderNotManaged(c, file);
 			return;
 		}
@@ -259,7 +259,7 @@ export abstract class TaskTreeView extends ItemView {
 	}
 
 	protected boardTitle(model: BoardModel): string {
-		const t = this.app.metadataCache.getFileCache(model.file)?.frontmatter?.title;
+		const t: unknown = this.app.metadataCache.getFileCache(model.file)?.frontmatter?.title;
 		return typeof t === "string" && t.length > 0 ? t : model.file.basename;
 	}
 
@@ -398,7 +398,7 @@ export abstract class TaskTreeView extends ItemView {
 			return;
 		}
 		const cache = this.app.metadataCache.getFileCache(file);
-		if (!isManagedFrontmatter(cache?.frontmatter as Record<string, unknown> | undefined)) {
+		if (!isManagedFrontmatter(cache?.frontmatter)) {
 			await this.convertToBoard(file);
 		}
 		await this.bind(file.path);

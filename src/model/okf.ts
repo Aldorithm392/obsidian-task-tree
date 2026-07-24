@@ -37,15 +37,15 @@ export function columnsFromFrontmatter(
 	for (const entry of raw) {
 		if (!entry || typeof entry !== "object") continue;
 		const e = entry as Record<string, unknown>;
-		const name = typeof e["name"] === "string" ? (e["name"] as string) : "";
-		const status = typeof e["status"] === "string" ? (e["status"] as string) : "";
-		const roleStr = typeof e["role"] === "string" ? (e["role"] as string).toLowerCase() : "";
+		const name = typeof e["name"] === "string" ? (e["name"]) : "";
+		const status = typeof e["status"] === "string" ? (e["status"]) : "";
+		const roleStr = typeof e["role"] === "string" ? (e["role"]).toLowerCase() : "";
 		if (!name || [...status].length !== 1 || !(ALL_ROLES as string[]).includes(roleStr)) continue;
 		let id = slug(name);
 		while (usedIds.has(id)) id += "-2";
 		usedIds.add(id);
 		const col: ColumnDef = { id, name, status, role: roleStr as Role };
-		if (typeof e["color"] === "string" && e["color"]) col.color = e["color"] as string;
+		if (typeof e["color"] === "string" && e["color"]) col.color = e["color"];
 		const wip = e["wipLimit"];
 		if (typeof wip === "number" && Number.isFinite(wip) && wip > 0) col.wipLimit = Math.floor(wip);
 		cols.push(col);

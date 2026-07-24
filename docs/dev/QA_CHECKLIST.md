@@ -1,0 +1,59 @@
+# Manual QA checklist (run in a real vault before every release)
+
+Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, enable the plugin
+(+ hot-reload). Use the `examples/` bundle as the test corpus — it doubles as the parser fixture.
+
+## Commands
+
+- [ ] Ribbon "Open Task Tree" opens the tree on the active board.
+- [ ] "Open current file as tree / Kanban board / dashboard" — each opens and binds the file.
+- [ ] "Create a new board" — prompts, creates in the configured folder, opens the tree, starter
+  tasks present. Empty folder setting → vault root; collision → " 2" suffix.
+- [ ] "Convert current file to a board" — adds `type: task-tree` + `title` without touching the body.
+- [ ] "Assign block IDs to all tasks in current file" — every task gets `^t-…` once; ids stable on re-run.
+- [ ] "Open a board…" — lists only `type: task-tree` files.
+- [ ] "Build the boards index (index.md)" — regenerates; every board listed, titles from frontmatter.
+- [ ] "Append an entry to the boards log (log.md)" — dated section, newest first; created if missing.
+
+## Views
+
+- [ ] Tree list: collapse/expand; collapse survives an Obsidian restart (stable-id nodes).
+- [ ] Tree diagram: hierarchy connectors; inverted toggle flips goal to the right; dependency
+  overlay draws dashed curves (red = held); overlay toggle hides them; both persist.
+- [ ] Tree columns: drill-down; inverted variant.
+- [ ] Kanban: drag between columns flips exactly one status char (check the file diff!); WIP-exceeded
+  column shows the over-limit style; column color tints header and chips.
+- [ ] Dashboard: stats, Blockers, "Waiting on dependencies" (when edges are held), Next up.
+- [ ] Full focus: open a subtree, edit inside it, exit.
+- [ ] Markdown in task text renders (a `[[link]]`, `**bold**`, a `#tag`); clicking a link opens it;
+  clicking plain text starts the inline edit.
+
+## Editing (watch the file after every action — this is the real assertion)
+
+- [ ] Inline rename (click / double-click by view): Enter saves, Esc cancels, blur saves; the line
+  keeps its status, override, blocked-by, and `^id`.
+- [ ] + / − hover buttons on nodes in every layout.
+- [ ] Context menu: mark as each column, override set + clear, move up/down/end, indent/outdent,
+  add subtask/sibling, rename, tag, delete (confirm on subtree).
+- [ ] Drag-reparent (list grip, diagram, columns) — children travel; only indent/order changes.
+- [ ] "Blocked by…" picker: adds `[tt-blocked-by:: …]` before `^id`; picking again removes; "Clear
+  dependencies" removes the field; badge + overlay update.
+- [ ] Rename board (header / goal box): frontmatter `title` set AND the file renamed; a `[[link]]`
+  to the board from another note still resolves; the open view stays bound.
+
+## Task = note
+
+- [ ] "Open / create note": creates in the configured folder with self-describing frontmatter,
+  appends the trailing `[[link]]`, opens in a new tab. Re-invoke → just opens.
+- [ ] Move the task's subtree → the note's `parent` / `depth` / `path` frontmatter resyncs.
+
+## Regression guard
+
+- [ ] With `examples/projects/website-redesign.md`: perform one move + one rename + one id-assign,
+  then `git diff` — only the intended lines changed; no `^id` lost, no `tt-` field lost.
+
+## Environments
+
+- [ ] Light and dark theme.
+- [ ] Narrow pane (~mobile width) — `isDesktopOnly: false` is a promise: layouts scroll, nothing overflows.
+- [ ] A board using 4-space indentation instead of tabs — moves/inserts match the file's style.

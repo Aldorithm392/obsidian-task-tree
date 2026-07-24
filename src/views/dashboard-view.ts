@@ -13,7 +13,7 @@ export class DashboardView extends TreeView {
 	}
 
 	getDisplayText(): string {
-		return "Task Tree — Dashboard";
+		return "Task Tree — dashboard";
 	}
 
 	getIcon(): string {

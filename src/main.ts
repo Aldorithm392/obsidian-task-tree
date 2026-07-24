@@ -41,27 +41,27 @@ export default class TaskTreePlugin extends Plugin {
 		this.addCommand({
 			id: "open-dashboard",
 			name: "Open current file as dashboard",
-			checkCallback: (checking) => this.activeMdGuard(checking, () => this.openForActive(VIEW_TYPE_DASHBOARD)),
+			checkCallback: (checking) => this.activeMdGuard(checking, () => void this.openForActive(VIEW_TYPE_DASHBOARD)),
 		});
 		this.addCommand({
 			id: "open-kanban",
 			name: "Open current file as Kanban board",
-			checkCallback: (checking) => this.activeMdGuard(checking, () => this.openForActive(VIEW_TYPE_KANBAN)),
+			checkCallback: (checking) => this.activeMdGuard(checking, () => void this.openForActive(VIEW_TYPE_KANBAN)),
 		});
 		this.addCommand({
 			id: "open-tree",
 			name: "Open current file as tree",
-			checkCallback: (checking) => this.activeMdGuard(checking, () => this.openForActive(VIEW_TYPE_TREE)),
+			checkCallback: (checking) => this.activeMdGuard(checking, () => void this.openForActive(VIEW_TYPE_TREE)),
 		});
 		this.addCommand({
 			id: "new-board",
-			name: "Create a new Task Tree board",
+			name: "Create a new board",
 			callback: () => void this.createNewBoard(),
 		});
 		this.addCommand({
 			id: "convert-to-board",
-			name: "Convert current file to a Task Tree board",
-			checkCallback: (checking) => this.activeMdGuard(checking, () => this.convertActive()),
+			name: "Convert current file to a board",
+			checkCallback: (checking) => this.activeMdGuard(checking, () => void this.convertActive()),
 		});
 		this.addCommand({
 			id: "assign-ids",
@@ -74,7 +74,7 @@ export default class TaskTreePlugin extends Plugin {
 		});
 		this.addCommand({
 			id: "open-picker",
-			name: "Open a Task Tree board…",
+			name: "Open a board…",
 			callback: () => new BoardPicker(this.app, this).open(),
 		});
 		this.addCommand({
@@ -95,7 +95,7 @@ export default class TaskTreePlugin extends Plugin {
 			.getMarkdownFiles()
 			.filter((f) =>
 				isManagedFrontmatter(
-					this.app.metadataCache.getFileCache(f)?.frontmatter as Record<string, unknown> | undefined,
+					this.app.metadataCache.getFileCache(f)?.frontmatter,
 				),
 			);
 	}
@@ -106,9 +106,9 @@ export default class TaskTreePlugin extends Plugin {
 		const indexPath = normalizePath(dir ? `${dir}/index.md` : "index.md");
 		const entries = this.managedBoards()
 			.map((f) => {
-				const fm = this.app.metadataCache.getFileCache(f)?.frontmatter as Record<string, unknown> | undefined;
-				const title = typeof fm?.["title"] === "string" && fm["title"] ? (fm["title"] as string) : f.basename;
-				const description = typeof fm?.["description"] === "string" ? (fm["description"] as string) : undefined;
+				const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
+				const title = typeof fm?.["title"] === "string" && fm["title"] ? (fm["title"]) : f.basename;
+				const description = typeof fm?.["description"] === "string" ? (fm["description"]) : undefined;
 				return { path: relPath(dir, f.path), title, description };
 			})
 			.sort((a, b) => a.title.localeCompare(b.title));
@@ -170,7 +170,7 @@ export default class TaskTreePlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, (await this.loadData()) as Partial<TaskTreeSettings> | null);
 		if (!Array.isArray(this.settings.columns) || this.settings.columns.length === 0) {
 			this.settings.columns = DEFAULT_SETTINGS.columns.map((c) => ({ ...c }));
 		}
@@ -222,7 +222,7 @@ export default class TaskTreePlugin extends Plugin {
 			return;
 		}
 		const cache = this.app.metadataCache.getFileCache(file);
-		if (!isManagedFrontmatter(cache?.frontmatter as Record<string, unknown> | undefined)) {
+		if (!isManagedFrontmatter(cache?.frontmatter)) {
 			await this.convert(file);
 		}
 		await this.activateView(viewType, file.path);

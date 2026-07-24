@@ -41,7 +41,7 @@ export async function loadBoard(plugin: TaskTreePlugin, file: TFile): Promise<Bo
 	const { app, settings } = plugin;
 	const text = await app.vault.cachedRead(file);
 	const cache = app.metadataCache.getFileCache(file);
-	const fm = (cache?.frontmatter ?? undefined) as Record<string, unknown> | undefined;
+	const fm = (cache?.frontmatter ?? undefined);
 	const columns = columnsFromFrontmatter(fm, settings.columns);
 	const lines = text.split("\n");
 
@@ -242,7 +242,7 @@ export async function renameBoard(plugin: TaskTreePlugin, file: TFile, title: st
 	try {
 		await plugin.app.fileManager.renameFile(file, path);
 	} catch (e) {
-		new Notice(`Task Tree: could not rename the board file (${e instanceof Error ? e.message : e})`);
+		new Notice(`Task Tree: could not rename the board file (${e instanceof Error ? e.message : String(e)})`);
 	}
 }
 
