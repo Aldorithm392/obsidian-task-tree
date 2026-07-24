@@ -141,6 +141,8 @@ export abstract class TaskTreeView extends ItemView {
 				nextScroll.scrollTop = sy;
 			}
 			this.consumePendingEdit(c, model);
+			// A managed board is on screen — the moment the vault may teach the agent.
+			void this.plugin.maybeOfferAgentSetup();
 		} catch (err) {
 			this.renderNotice(c, `Could not render board: ${(err as Error).message}`);
 		}

@@ -497,7 +497,7 @@ export class TreeView extends TaskTreeView {
 			newDepth: 0,
 			indentUnit: model.indentUnit,
 			bodyStart: model.bodyStart,
-		}, dragged.id);
+		});
 	}
 
 	private renderDiagramNode(parent: HTMLElement, node: TaskNode, model: BoardModel): void {
@@ -716,7 +716,7 @@ export class TreeView extends TaskTreeView {
 			newDepth: prev.depth + 1,
 			indentUnit: model.indentUnit,
 			bodyStart: model.bodyStart,
-		}, node.id);
+		});
 	}
 
 	private async outdent(node: TaskNode, model: BoardModel): Promise<void> {
@@ -731,7 +731,7 @@ export class TreeView extends TaskTreeView {
 			newDepth: parent.depth,
 			indentUnit: model.indentUnit,
 			bodyStart: model.bodyStart,
-		}, node.id);
+		});
 	}
 
 	private parentLineOf(node: TaskNode, model: BoardModel): number {
@@ -753,7 +753,7 @@ export class TreeView extends TaskTreeView {
 			newDepth: node.depth,
 			indentUnit: model.indentUnit,
 			bodyStart: model.bodyStart,
-		}, node.id);
+		});
 	}
 
 	private async moveDown(node: TaskNode, model: BoardModel): Promise<void> {
@@ -769,7 +769,7 @@ export class TreeView extends TaskTreeView {
 			newDepth: node.depth,
 			indentUnit: model.indentUnit,
 			bodyStart: model.bodyStart,
-		}, node.id);
+		});
 	}
 
 	/** Move a node to be the last of its current siblings (reliable "drop at the end"). */
@@ -785,7 +785,7 @@ export class TreeView extends TaskTreeView {
 			newDepth: node.depth,
 			indentUnit: model.indentUnit,
 			bodyStart: model.bodyStart,
-		}, node.id);
+		});
 	}
 
 	private subtreeIds(node: TaskNode): Set<string> {
@@ -905,7 +905,7 @@ export class TreeView extends TaskTreeView {
 			newDepth,
 			indentUnit: model.indentUnit,
 			bodyStart: model.bodyStart,
-		}, dragged.id);
+		});
 	}
 
 	private nodeMenu(e: MouseEvent, node: TaskNode, model: BoardModel): void {

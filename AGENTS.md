@@ -9,7 +9,9 @@ Machine-readable grammar tables: [docs/agent/CONTRACT.md](docs/agent/CONTRACT.md
 **Only read or edit a file whose YAML frontmatter contains `type: task-tree`.** Never treat any
 other file as a board. Task-notes are marked `type: task-note`; edit their *content* freely below
 the frontmatter, but leave their structural frontmatter (`parent`, `depth`, `path`,
-`distance_to_main`, `task_id`, `board`) to the plugin.
+`distance_to_main`, `task_id`, `board`, `task_status`) to the plugin — it reconciles those keys
+automatically on every render, so restructure boards freely and note positions self-heal.
+`task_status: orphaned` means the note's task was deleted from its board.
 
 ## The task line
 

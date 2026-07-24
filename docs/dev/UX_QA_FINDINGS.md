@@ -22,7 +22,7 @@ tags: [qa, ux]
 	- [ ] Keyboard-only path: no way to add/navigate/edit tasks without the mouse — a "add task to active board" command + arrow-row navigation would close it
 	- [ ] Starter tasks and note headings are English-only — consider locale-aware or neutral templates
 	- [ ] Task pickers ("Blocked by…", board picker) are accent-sensitive — "dia" does not find "día"; normalize diacritics before fuzzy matching
-	- [ ] Task-note frontmatter goes stale when an AGENT restructures the board externally (only plugin-driven moves resync) — add a "Resync all task-note frontmatter" command
+	- [x] Task-note frontmatter staleness SOLVED systemically: reconcile-on-render heals parent/depth/path/title/board no matter who restructured (plugin, agent, hand edit); deleted tasks mark their notes `task_status: orphaned` (undo clears it); plus a "Resync all task-note frontmatter" command — verified live (external restructure + parent rename both healed)
 	- [ ] Verified: moving task-notes and boards across folders keeps everything resolving (links, note round-trip, write-back) — covered by basename resolution + the new leaf-state patch
 - [ ] Parked ideas (polish)
 	- [ ] Soft cluster background per top-level branch in the diagram for scanability

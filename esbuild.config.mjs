@@ -32,6 +32,9 @@ const context = await esbuild.context({
 	],
 	format: "cjs",
 	target: "es2021",
+	// The agent contract + skill ship INSIDE the plugin (src/agent-setup.ts imports
+	// them as text) so the vault can teach AI tools without any user setup.
+	loader: { ".md": "text" },
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,

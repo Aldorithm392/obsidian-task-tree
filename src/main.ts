@@ -6,13 +6,15 @@ import { DashboardView } from "./views/dashboard-view.ts";
 import { TaskTreeView, VIEW_TYPE_DASHBOARD, VIEW_TYPE_KANBAN, VIEW_TYPE_TREE } from "./views/base-view.ts";
 import { appendLogEntry, buildIndexMd, isManagedFrontmatter, MANAGED_TYPE } from "./model/okf.ts";
 import { assignIdsInText } from "./model/writer.ts";
-import { createBoardFile, syncTaskNotesForMove } from "./board-controller.ts";
-import { promptText } from "./views/modals.ts";
+import { createBoardFile, reconcileBoardNotes } from "./board-controller.ts";
+import { ensureAgentInstructions } from "./agent-setup.ts";
+import { confirmModal, promptText } from "./views/modals.ts";
 
 export default class TaskTreePlugin extends Plugin {
 	settings: TaskTreeSettings = DEFAULT_SETTINGS;
-	/** board path -> task ids whose notes need a frontmatter resync once the cache is fresh */
-	private pendingNoteSync = new Map<string, Set<string>>();
+	/** Once-per-session guards for the agent-instructions machinery. */
+	private agentOffered = false;
+	private agentEnsured = false;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -21,18 +23,6 @@ export default class TaskTreePlugin extends Plugin {
 		this.registerView(VIEW_TYPE_TREE, (leaf) => new TreeView(leaf, this));
 		this.registerView(VIEW_TYPE_DASHBOARD, (leaf) => new DashboardView(leaf, this));
 		this.addSettingTab(new TaskTreeSettingTab(this.app, this));
-
-		// When a moved board's metadata has re-parsed (fresh tree), resync the moved
-		// tasks' note frontmatter. Doing it here — not right after the write — guarantees
-		// loadBoard sees the new positions, not the stale pre-move cache.
-		this.registerEvent(
-			this.app.metadataCache.on("changed", (file) => {
-				const ids = this.pendingNoteSync.get(file.path);
-				if (!ids || ids.size === 0) return;
-				this.pendingNoteSync.delete(file.path);
-				void syncTaskNotesForMove(this, file, [...ids]);
-			}),
-		);
 
 		// Keep every Task Tree leaf bound when its board file is moved or renamed.
 		// The view instances handle this themselves, but Obsidian DEFERS background
@@ -108,6 +98,61 @@ export default class TaskTreePlugin extends Plugin {
 			name: "Append an entry to the boards log (log.md)",
 			callback: () => void this.appendLogCommand(),
 		});
+		this.addCommand({
+			id: "resync-task-notes",
+			name: "Resync all task-note frontmatter",
+			callback: () => void this.resyncTaskNotesCommand(),
+		});
+	}
+
+	/** Reconcile every board's task-notes right now (agent / manual escape hatch). */
+	private async resyncTaskNotesCommand(): Promise<void> {
+		let healed = 0;
+		const boards = this.managedBoards();
+		for (const f of boards) healed += await reconcileBoardNotes(this, f);
+		new Notice(
+			healed > 0
+				? `Resynced ${healed} task-note${healed === 1 ? "" : "s"} across ${boards.length} board${boards.length === 1 ? "" : "s"}.`
+				: "All task-note frontmatter is already in sync.",
+		);
+	}
+
+	/**
+	 * The vault teaches the agent: with consent given once, the plugin maintains
+	 * AGENTS.md + a Claude Code skill inside the vault, silently and forever.
+	 * Called whenever a managed board renders.
+	 */
+	async maybeOfferAgentSetup(): Promise<void> {
+		const mode = this.settings.agentInstructions;
+		if (mode === "off") return;
+		if (mode === "on") {
+			if (this.agentEnsured) return;
+			this.agentEnsured = true;
+			await ensureAgentInstructions(this);
+			return;
+		}
+		// mode === "ask": offer exactly once per session, remember the answer forever.
+		if (this.agentOffered) return;
+		this.agentOffered = true;
+		const ok = await confirmModal(this.app, {
+			title: "Teach AI tools about your boards?",
+			body:
+				"Task Tree can add agent instructions to this vault (an AGENTS.md section and a Claude Code skill) so AI assistants understand and safely edit your boards — no setup on your side, kept up to date automatically. Your own content is never touched.",
+			cta: "Add",
+			danger: false,
+		});
+		if (ok) {
+			this.settings.agentInstructions = "on";
+			await this.saveSettings();
+			this.agentEnsured = true;
+			await ensureAgentInstructions(this);
+			new Notice("Added AGENTS.md and the Claude Code skill to this vault.");
+		} else if (this.settings.agentInstructions === "ask") {
+			// Only a live "ask" turns into "off" — a stale modal (e.g. after a plugin
+			// reload raced a second instance) can never downgrade an accepted "on".
+			this.settings.agentInstructions = "off";
+			await this.saveSettings();
+		}
 	}
 
 	/** Every managed board in the vault (frontmatter `type: task-tree`). */
@@ -173,14 +218,6 @@ export default class TaskTreePlugin extends Plugin {
 			}
 		}
 		await this.app.vault.create(path, create());
-	}
-
-	/** Remember that a moved task's note needs a frontmatter resync on the next cache refresh. */
-	queueNoteSync(filePath: string, movedId: string): void {
-		if (!this.settings.updateTaskNoteFrontmatter) return;
-		const set = this.pendingNoteSync.get(filePath) ?? new Set<string>();
-		set.add(movedId);
-		this.pendingNoteSync.set(filePath, set);
 	}
 
 	private activeMdGuard(checking: boolean, run: () => void): boolean {

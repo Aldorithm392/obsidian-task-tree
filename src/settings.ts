@@ -25,6 +25,8 @@ export interface TaskTreeSettings {
 	updateTaskNoteFrontmatter: boolean;
 	/** Show a task's own [[note]] link on the task line in the views (the file always keeps it). */
 	showTaskNoteLink: boolean;
+	/** Maintain in-vault agent instructions (AGENTS.md + Claude Code skill): ask once / on / off. */
+	agentInstructions: "ask" | "on" | "off";
 	/** Checkbox click steps through every column (todo → doing → done → …) instead of toggling done. */
 	checkboxCycles: boolean;
 }
@@ -47,6 +49,7 @@ export const DEFAULT_SETTINGS: TaskTreeSettings = {
 	updateTaskNoteFrontmatter: true,
 	showTaskNoteLink: false,
 	checkboxCycles: false,
+	agentInstructions: "ask",
 };
 
 /** The indentation unit used when the plugin writes moved or new lines. */
@@ -234,9 +237,26 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 				}),
 			);
 
+		new Setting(containerEl).setName("AI agents").setHeading();
+
+		new Setting(containerEl)
+			.setName("Maintain agent instructions in this vault")
+			.setDesc(
+				"Adds a managed AGENTS.md section and a Claude Code skill to the vault so AI assistants understand your boards — kept current automatically; your own content is never touched. 'Ask once' offers it the first time a board opens.",
+			)
+			.addDropdown((d) => {
+				d.addOption("ask", "Ask once");
+				d.addOption("on", "On");
+				d.addOption("off", "Off");
+				d.setValue(this.plugin.settings.agentInstructions).onChange(async (v) => {
+					this.plugin.settings.agentInstructions = v as "ask" | "on" | "off";
+					await this.plugin.saveSettings();
+				});
+			});
+
 		new Setting(containerEl)
 			.setName("Sync task-note frontmatter on move")
-			.setDesc("When a task is moved, update its note's parent / depth / path frontmatter to match its new place.")
+			.setDesc("Reconcile every note's parent / depth / path frontmatter whenever its board renders — edits from any source (this plugin, an AI agent, your editor) self-heal.")
 			.addToggle((t) =>
 				t.setValue(this.plugin.settings.updateTaskNoteFrontmatter).onChange(async (v) => {
 					this.plugin.settings.updateTaskNoteFrontmatter = v;

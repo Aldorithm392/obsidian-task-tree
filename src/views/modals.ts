@@ -100,6 +100,8 @@ interface ConfirmOptions {
 	title: string;
 	body?: string;
 	cta?: string;
+	/** Destructive styling on the confirm button (default true — most confirms are deletes). */
+	danger?: boolean;
 }
 
 /** A yes/no confirm dialog. Resolves true only if the user confirms. */
@@ -122,16 +124,15 @@ class ConfirmModal extends Modal {
 		this.titleEl.setText(this.opts.title);
 		if (this.opts.body) this.contentEl.createEl("p", { text: this.opts.body });
 		new Setting(this.contentEl)
-			.addButton((b) =>
-				b
-					.setButtonText(this.opts.cta ?? "Delete")
-					.setWarning()
-					.onClick(() => {
-						this.answered = true;
-						this.resolve(true);
-						this.close();
-					}),
-			)
+			.addButton((b) => {
+				b.setButtonText(this.opts.cta ?? "Delete").onClick(() => {
+					this.answered = true;
+					this.resolve(true);
+					this.close();
+				});
+				if (this.opts.danger === false) b.setCta();
+				else b.setWarning();
+			})
 			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()));
 	}
 

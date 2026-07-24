@@ -22,6 +22,7 @@ import {
 } from "../src/model/writer.ts";
 import { DEFAULT_COLUMNS, validateColumns } from "../src/columns.ts";
 import { columnsFromFrontmatter } from "../src/model/okf.ts";
+import { expectedNoteFields, noteFieldsDrift } from "../src/model/notemeta.ts";
 import { generateId } from "../src/model/ids.ts";
 import {
 	computeSummary,
@@ -619,6 +620,54 @@ test("every conformance example in CONTRACT.md parses as annotated", () => {
 test("the skill's bundled contract is byte-identical to docs/agent/CONTRACT.md", () => {
 	const bundled = readFileSync(new URL("../skills/task-tree/reference/contract.md", import.meta.url), "utf8");
 	assert.equal(bundled, contractDoc);
+});
+
+// ---- note frontmatter integrity ---------------------------------------------
+console.log("note frontmatter");
+test("expectedNoteFields builds the full structural shape", () => {
+	const f = expectedNoteFields({
+		title: "Reservar hotel",
+		path: ["Viaje", "Alojamiento"],
+		parentTitle: "Alojamiento",
+		depth: 2,
+		boardName: "Viaje 2026",
+	});
+	assert.deepEqual(f, {
+		title: "Reservar hotel",
+		parent: "Alojamiento",
+		depth: 2,
+		distance_to_main: 2,
+		path: "Viaje / Alojamiento / Reservar hotel",
+	});
+});
+test("root task maps to parent '(root)' and bare path", () => {
+	const f = expectedNoteFields({ title: "Solo", path: [], parentTitle: null, depth: 0, boardName: "B" });
+	assert.equal(f.parent, "(root)");
+	assert.equal(f.path, "Solo");
+});
+test("noteFieldsDrift pinpoints exactly the stale keys (renamed parent case)", () => {
+	const expected = expectedNoteFields({
+		title: "Hotel",
+		path: ["Alojamiento renombrado"],
+		parentTitle: "Alojamiento renombrado",
+		depth: 1,
+		boardName: "B",
+	});
+	const cached = {
+		title: "Hotel",
+		parent: "Alojamiento", // stale
+		depth: 1,
+		distance_to_main: 1,
+		path: "Alojamiento / Hotel", // stale
+		task_id: "t-x",
+	};
+	assert.deepEqual(noteFieldsDrift(cached, expected), ["parent", "path"]);
+});
+test("noteFieldsDrift: missing frontmatter drifts everything; in-sync drifts nothing", () => {
+	const expected = expectedNoteFields({ title: "T", path: [], parentTitle: null, depth: 0, boardName: "B" });
+	assert.equal(noteFieldsDrift(undefined, expected).length, 5);
+	const inSync = { title: "T", parent: "(root)", depth: 0, distance_to_main: 0, path: "T" };
+	assert.deepEqual(noteFieldsDrift(inSync, expected), []);
 });
 
 // ---- summary -----------------------------------------------------------------

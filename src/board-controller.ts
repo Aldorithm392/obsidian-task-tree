@@ -5,6 +5,7 @@ import { buildTree, flatten } from "./model/parser.ts";
 import { computeRollup } from "./model/rollup.ts";
 import { markBlockedPaths, resolveEdges, type EdgeGraph } from "./model/insights.ts";
 import { columnsFromFrontmatter } from "./model/okf.ts";
+import { expectedNoteFields, noteFieldsDrift, type ExpectedNoteFields } from "./model/notemeta.ts";
 import { getIndentUnit } from "./settings.ts";
 import {
 	addTagInText,
@@ -37,7 +38,11 @@ export interface BoardModel {
 	indentUnit: string;
 }
 
-export async function loadBoard(plugin: TaskTreePlugin, file: TFile): Promise<BoardModel> {
+export async function loadBoard(
+	plugin: TaskTreePlugin,
+	file: TFile,
+	opts: { reconcile?: boolean } = {},
+): Promise<BoardModel> {
 	const { app, settings } = plugin;
 	const text = await app.vault.cachedRead(file);
 	const cache = app.metadataCache.getFileCache(file);
@@ -86,7 +91,25 @@ export async function loadBoard(plugin: TaskTreePlugin, file: TFile): Promise<Bo
 		}
 	}
 
-	return { file, lines, roots, columns, rollupOpts, graph, bodyStart: frontmatterEndLine(lines), indentUnit };
+	const model: BoardModel = {
+		file,
+		lines,
+		roots,
+		columns,
+		rollupOpts,
+		graph,
+		bodyStart: frontmatterEndLine(lines),
+		indentUnit,
+	};
+
+	// Cause-agnostic YAML integrity: EVERY render reconciles task-note frontmatter
+	// against the tree just built — so it heals no matter who restructured the board
+	// (this plugin, an external agent, or a hand edit). Debounced; writes only on drift.
+	if (opts.reconcile !== false && plugin.settings.updateTaskNoteFrontmatter) {
+		scheduleNoteReconcile(plugin, model);
+	}
+
+	return model;
 }
 
 /** Assign a stable ^id to every task that lacks one. Returns true if it wrote. */
@@ -149,7 +172,6 @@ export async function moveNode(
 	plugin: TaskTreePlugin,
 	file: TFile,
 	opts: MoveSubtreeOptions,
-	movedId?: string,
 ): Promise<void> {
 	let changed = false;
 	await plugin.app.vault.process(file, (d) => {
@@ -157,10 +179,9 @@ export async function moveNode(
 		changed = next !== d;
 		return next;
 	});
-	if (!changed) return; // a no-op move (dropped in place) shouldn't touch or queue anything
-	// The moved subtree's position changed → its task-notes' frontmatter is now stale.
-	// Queue a resync that runs once the board's metadata cache reflects the new tree.
-	if (movedId) plugin.queueNoteSync(file.path, movedId);
+	if (!changed) return; // a no-op move (dropped in place) shouldn't touch anything
+	// Note frontmatter heals via reconcile-on-render: the write triggers a re-render,
+	// the re-render reconciles. No per-move bookkeeping needed.
 	await touch(plugin, file);
 }
 
@@ -195,8 +216,29 @@ export async function addRootTask(plugin: TaskTreePlugin, model: BoardModel): Pr
 }
 
 export async function deleteTask(plugin: TaskTreePlugin, file: TFile, node: TaskNode): Promise<void> {
+	// Resolve the notes of the whole subtree BEFORE the lines vanish, so they can be
+	// marked as orphaned — visible, searchable, and honest to any agent reading them.
+	// Content is never touched; an undo brings the task back and the next reconcile
+	// clears the marker again.
+	const orphans: TFile[] = [];
+	if (plugin.settings.updateTaskNoteFrontmatter) {
+		for (const n of flatten([node])) {
+			if (!n.isTask) continue;
+			const note = resolveTaskNote(plugin, file.path, n);
+			if (note) orphans.push(note);
+		}
+	}
 	await plugin.app.vault.process(file, (d) => deleteRangeInText(d, node.line, node.lastDescLine));
 	await touch(plugin, file);
+	for (const note of orphans) {
+		try {
+			await plugin.app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
+				fm["task_status"] = "orphaned";
+			});
+		} catch {
+			// non-fatal — the note may have been deleted alongside
+		}
+	}
 }
 
 export async function renameTask(
@@ -327,19 +369,25 @@ function cleanTitle(text: string): string {
 
 /** The self-describing frontmatter + body for a task's own note (an OKF concept). */
 function taskNoteContent(node: TaskNode, meta: TaskNoteMeta, boardName: string, noteName: string): string {
-	// Use the same stripLinks + the same field shapes as syncTaskNotesForMove, so a
-	// freshly-created note and a re-synced one are byte-identical. JSON-encode the string
-	// values so a colon/quote/bracket in a title can't break the YAML.
-	const title = stripLinks(node.text) || noteName;
+	// Built from the SAME expected-fields shape the reconcile pass enforces, so a
+	// freshly-created note and a reconciled one are byte-identical. JSON-encode the
+	// string values so a colon/quote/bracket in a title can't break the YAML.
+	const expected = expectedNoteFields({
+		title: stripLinks(node.text) || noteName,
+		path: meta.path.map(stripLinks),
+		parentTitle: meta.parentText ? stripLinks(meta.parentText) : null,
+		depth: meta.depth,
+		boardName,
+	});
 	const lines = [
 		"---",
 		"type: task-note",
-		`title: ${JSON.stringify(title)}`,
+		`title: ${JSON.stringify(expected.title)}`,
 		`board: "[[${boardName}]]"`,
-		`parent: ${JSON.stringify(meta.parentText ? stripLinks(meta.parentText) : "(root)")}`,
-		`depth: ${meta.depth}`,
-		`distance_to_main: ${meta.depth}`,
-		`path: ${JSON.stringify([...meta.path.map(stripLinks), title].join(" / "))}`,
+		`parent: ${JSON.stringify(expected.parent)}`,
+		`depth: ${expected.depth}`,
+		`distance_to_main: ${expected.distance_to_main}`,
+		`path: ${JSON.stringify(expected.path)}`,
 	];
 	if (node.hasStoredId) lines.push(`task_id: ${node.id}`);
 	// No body H1: Obsidian's inline title already shows the note name — an H1 would
@@ -421,61 +469,91 @@ function nodeMeta(node: TaskNode, byId: Map<string, TaskNode>): TaskNoteMeta {
 	return { depth: node.depth, path, parentText: parent ? parent.text : null };
 }
 
+/** The structural fields the plugin expects a task's note to carry, from live tree data. */
+function expectedFieldsFor(node: TaskNode, byId: Map<string, TaskNode>, noteBasename: string): ExpectedNoteFields {
+	const meta = nodeMeta(node, byId);
+	return expectedNoteFields({
+		title: stripLinks(node.text) || noteBasename,
+		path: meta.path.map(stripLinks),
+		parentTitle: meta.parentText ? stripLinks(meta.parentText) : null,
+		depth: meta.depth,
+		boardName: "", // board handled by resolution, not by string compare
+	});
+}
+
+// One pending reconcile per board path — a fast typist shouldn't trigger a write storm.
+const reconcileTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Debounced entry point used by loadBoard. */
+function scheduleNoteReconcile(plugin: TaskTreePlugin, model: BoardModel): void {
+	const key = model.file.path;
+	const prev = reconcileTimers.get(key);
+	if (prev !== undefined) window.clearTimeout(prev);
+	reconcileTimers.set(
+		key,
+		window.setTimeout(() => {
+			reconcileTimers.delete(key);
+			void reconcileModelNotes(plugin, model);
+		}, 500),
+	);
+}
+
 /**
- * After a structural move, refresh the self-describing frontmatter (parent / depth /
- * distance_to_main / path) of every task-note inside the moved subtree, so an agent
- * reading the note still sees where the task sits. Runs on fresh, post-move data.
+ * Reconcile every task-note's structural frontmatter against the board's live tree:
+ * parent / depth / distance_to_main / path / title, the `board` link (checked by
+ * RESOLUTION, so a moved board or rewritten link never causes churn), and clearing a
+ * stale `task_status: orphaned` when a task re-appears (undo). Content is never
+ * touched. The multi-claim guard skips notes with ambiguous ownership.
  */
-export async function syncTaskNotesForMove(
-	plugin: TaskTreePlugin,
-	file: TFile,
-	movedIds: string[],
-): Promise<void> {
-	if (!plugin.settings.updateTaskNoteFrontmatter) return;
-	const model = await loadBoard(plugin, file);
-	const byId = new Map(flatten(model.roots).map((n) => [n.id, n]));
+export async function reconcileModelNotes(plugin: TaskTreePlugin, model: BoardModel): Promise<number> {
+	if (!plugin.settings.updateTaskNoteFrontmatter) return 0;
+	const nodes = flatten(model.roots).filter((n) => n.isTask);
+	const byId = new Map(nodes.map((n) => [n.id, n]));
 
-	const subtree = new Map<string, TaskNode>();
-	let unresolved = false;
-	for (const id of movedIds) {
-		const node = byId.get(id);
-		if (!node) {
-			unresolved = true; // a position-keyed (id-less) task the move renumbered
-			continue;
-		}
-		for (const n of flatten([node])) subtree.set(n.id, n);
-	}
-
-	// If an id couldn't be resolved, we can't know which subtree moved — refresh every
-	// task-note so none is left stale. (Only notes that actually exist are written.)
-	const targets = unresolved ? [...byId.values()] : [...subtree.values()];
-
-	// Resolve first, and record every task that claims each note. A note claimed by more
-	// than one task is ambiguous (e.g. two tasks share a trailing link, no task_id) —
-	// skip it rather than let document order silently pick a winner.
 	const claims = new Map<string, TaskNode[]>();
 	const notes = new Map<string, TFile>();
-	for (const n of targets) {
-		if (!n.isTask) continue;
-		const note = resolveTaskNote(plugin, file.path, n);
+	for (const n of nodes) {
+		const note = resolveTaskNote(plugin, model.file.path, n);
 		if (!note) continue;
 		notes.set(note.path, note);
 		(claims.get(note.path) ?? claims.set(note.path, []).get(note.path)!).push(n);
 	}
 
+	let healed = 0;
 	for (const [path, owners] of claims) {
 		if (owners.length !== 1) continue; // ambiguous ownership — leave it alone
 		const n = owners[0]!;
 		const note = notes.get(path)!;
-		const meta = nodeMeta(n, byId);
-		const title = stripLinks(n.text) || note.basename;
+		const cached = plugin.app.metadataCache.getFileCache(note)?.frontmatter;
+
+		const expected = expectedFieldsFor(n, byId, note.basename);
+		const drift = noteFieldsDrift(cached, expected);
+
+		// `board` drifts only when the recorded link no longer RESOLVES to this board.
+		const boardLink = typeof cached?.["board"] === "string" ? cached["board"] : "";
+		const boardTarget = lastWikilink(boardLink);
+		const resolved = boardTarget
+			? plugin.app.metadataCache.getFirstLinkpathDest(boardTarget, note.path)
+			: null;
+		const boardDrifted = resolved?.path !== model.file.path;
+
+		const orphanStale = cached?.["task_status"] === "orphaned";
+		if (drift.length === 0 && !boardDrifted && !orphanStale) continue;
+
 		await plugin.app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
-			fm["parent"] = meta.parentText ? stripLinks(meta.parentText) : "(root)";
-			fm["depth"] = meta.depth;
-			fm["distance_to_main"] = meta.depth;
-			fm["path"] = [...meta.path.map(stripLinks), title].join(" / ");
+			for (const k of drift) fm[k] = expected[k as keyof ExpectedNoteFields];
+			if (boardDrifted) fm["board"] = `[[${model.file.basename}]]`;
+			if (orphanStale) delete fm["task_status"]; // the task is back on the board
 		});
+		healed += 1;
 	}
+	return healed;
+}
+
+/** Load a board and reconcile its task-notes NOW (the command / agent escape hatch). */
+export async function reconcileBoardNotes(plugin: TaskTreePlugin, file: TFile): Promise<number> {
+	const model = await loadBoard(plugin, file, { reconcile: false });
+	return reconcileModelNotes(plugin, model);
 }
 
 async function touch(plugin: TaskTreePlugin, file: TFile): Promise<void> {
