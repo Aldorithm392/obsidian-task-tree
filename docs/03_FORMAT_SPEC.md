@@ -83,7 +83,7 @@ characters may change; **roles are the stable contract** that roll-up and overri
 ## 2. The task line
 
 ```
-<indent><marker> [<status>] <text> [tt-override:: <role>]? ^<id>?
+<indent><marker> [<status>] <text> [tt-override:: <role>]? [tt-blocked-by:: <id>, <id>…]? ^<id>?
 ```
 
 Example (one tab per depth level):
@@ -106,8 +106,10 @@ Example (one tab per depth level):
   subtree move (Operation A) without breaking links or the override marker. With auto-assign on
   (default), every task in a managed board gets one, written once as a guarded batch.
 - **Overrides** use the inline field `[tt-override:: <role>]`, placed before the block id (§4).
-- Task Tree MUST NOT emit Tasks-plugin metadata emoji (📅 ⏳ 🛫 ✅ 🔁 🔼 …); its only field is the
-  `tt-`-namespaced override, which Tasks ignores and Dataview can query.
+- **Dependencies** use the inline field `[tt-blocked-by:: <id>, <id>…]`, placed before the block id
+  (§4b). Values are bare block ids (no `^`), same board only.
+- Task Tree MUST NOT emit Tasks-plugin metadata emoji (📅 ⏳ 🛫 ✅ 🔁 🔼 …); its only fields are the
+  `tt-`-namespaced ones above, which Tasks ignores and Dataview can query.
 
 ---
 
@@ -171,6 +173,34 @@ Decision tree for any node's state:
 3. Else → **leaf**; its own char is authoritative.
 
 Dropping a parent card back into its *derived* column clears the override (returns it to derived).
+
+---
+
+## 4b. Dependencies (`tt-blocked-by`)
+
+Tasks can depend on other tasks **across the tree** — the real graph, written on the line so any
+agent reads it:
+
+```markdown
+- [ ] Ship the API ^t-aa10
+- [ ] Announce the launch [tt-blocked-by:: t-aa10] ^t-bb20
+```
+
+- Values are **bare block ids** (no `^`), comma-separated, referencing tasks **on the same board**.
+  Not wikilinks: a task's *trailing* `[[link]]` is reserved for its own task-note, and ids stay
+  stable through renames where titles don't.
+- An edge is **released** when the referenced task's effective role is `done` or `cancelled`; any
+  other role **holds** the depending task ("waiting on dependencies").
+- **Dependencies are a separate signal — they never feed roll-up (§3).** A parent's checkbox state
+  stays recomputable from its own leaves alone. A held task keeps its own status character; the
+  plugin surfaces the hold as a badge and in the Blockers panel. To make the *role* itself read as
+  blocked, a human (or agent) writes `[tt-override:: blocked]` — explicitly, on the line.
+- Unknown ids and self-references are surfaced as warnings, never dropped silently. Cycles are
+  detected and flagged; they hold every task on the cycle.
+- Cross-file dependencies are out of scope for now (they travel with cross-file moves, on the
+  horizon).
+
+Writers MUST preserve this field (like the override and the id) when rewriting a line's text.
 
 ---
 

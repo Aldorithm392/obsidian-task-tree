@@ -60,6 +60,8 @@ export interface ParsedLine {
 	text: string;
 	/** Role from a `[tt-override:: role]` inline field, if present. */
 	override?: Role;
+	/** Block ids from a `[tt-blocked-by:: id, id]` inline field, if present. */
+	blockedBy?: string[];
 	/** Trailing `^id` (without the caret), if present. */
 	blockId?: string;
 }
@@ -80,6 +82,8 @@ export interface TaskNode {
 	isTask: boolean;
 	text: string;
 	override?: Role;
+	/** Same-board dependency edges: block ids of tasks this one is blocked by. */
+	blockedBy: string[];
 	/** Role of this node's own status character. */
 	literalRole: Role;
 	/** Roll-up over children, ignoring any override. */
@@ -93,6 +97,8 @@ export interface TaskNode {
 	isLeaf: boolean;
 	/** Set by markBlockedPaths: a blocked task sits somewhere below this node. */
 	hasBlockedDescendant?: boolean;
+	/** Set by resolveEdges: an unfinished `tt-blocked-by` dependency holds this task up. */
+	isDependencyBlocked?: boolean;
 }
 
 export interface RollupOptions {

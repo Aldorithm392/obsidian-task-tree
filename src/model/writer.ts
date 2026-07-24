@@ -7,6 +7,7 @@ import { collectBlockIds, generateId } from "./ids.ts";
 // and the closing bracket so the single status character can be swapped in place.
 const STATUS_RE = /^(\s*[-*+]\s+\[)[^\]]?(\])/;
 const OVERRIDE_MARKER_RE = /\s*\[tt-override::\s*[A-Za-z]+\s*\]/;
+const BLOCKED_BY_MARKER_RE = /\s*\[tt-blocked-by::\s*[^\]]*\]/;
 const TRAILING_ID_RE = /(\s+\^[A-Za-z0-9-]+)\s*$/;
 
 /**
@@ -60,6 +61,38 @@ export function clearOverrideInText(text: string, line: number): string {
 
 function removeOverrideMarker(line: string): string {
 	return line.replace(OVERRIDE_MARKER_RE, "");
+}
+
+/**
+ * Set (or replace) a task's `[tt-blocked-by:: id, id]` dependency field, placed —
+ * like the override field — before any trailing block id. An empty list clears it.
+ */
+export function setBlockedByInText(text: string, line: number, ids: string[]): string {
+	const clean = ids.map((s) => s.trim()).filter((s) => /^[A-Za-z0-9-]+$/.test(s));
+	if (clean.length === 0) return clearBlockedByInText(text, line);
+	const lines = text.split("\n");
+	let l = lines[line];
+	if (l === undefined) return text;
+	l = l.replace(BLOCKED_BY_MARKER_RE, "");
+
+	const field = ` [tt-blocked-by:: ${clean.join(", ")}]`;
+	const idMatch = TRAILING_ID_RE.exec(l);
+	if (idMatch) {
+		l = l.slice(0, idMatch.index) + field + idMatch[0];
+	} else {
+		l = l.replace(/\s*$/, "") + field;
+	}
+	lines[line] = l;
+	return lines.join("\n");
+}
+
+/** Remove a task's dependency field entirely. */
+export function clearBlockedByInText(text: string, line: number): string {
+	const lines = text.split("\n");
+	const l = lines[line];
+	if (l === undefined) return text;
+	lines[line] = l.replace(BLOCKED_BY_MARKER_RE, "");
+	return lines.join("\n");
 }
 
 export interface AssignIdsOptions {
@@ -204,14 +237,15 @@ export function deleteRangeInText(text: string, start: number, end: number): str
 	return lines.join("\n");
 }
 
-/** Rebuild a list line with new body text, preserving marker/status/override/blockId. */
+/** Rebuild a list line with new body text, preserving marker/status/override/blockedBy/blockId. */
 function rebuildLine(original: string, newText: string): string {
 	const p = parseLine(original);
 	if (p.marker === "") return original;
 	const box = p.isTask ? `[${p.statusChar || " "}] ` : "";
 	const override = p.override ? ` [tt-override:: ${p.override}]` : "";
+	const blockedBy = p.blockedBy && p.blockedBy.length > 0 ? ` [tt-blocked-by:: ${p.blockedBy.join(", ")}]` : "";
 	const id = p.blockId ? ` ^${p.blockId}` : "";
-	return `${p.indentText}${p.marker} ${box}${newText}${override}${id}`;
+	return `${p.indentText}${p.marker} ${box}${newText}${override}${blockedBy}${id}`;
 }
 
 /** Replace a task's display text, preserving its status, override field, and block id. */

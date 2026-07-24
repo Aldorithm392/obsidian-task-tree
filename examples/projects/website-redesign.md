@@ -24,5 +24,5 @@ tt_columns:
 	- [x] Domain + DNS ^t-domain
 	- [ ] Staging box ^t-staging
 - [ ] Launch ^t-launch
-	- [ ] QA pass ^t-qa
-	- [ ] Announcement post ^t-announce
+	- [ ] QA pass [tt-blocked-by:: t-staging] ^t-qa
+	- [ ] Announcement post [tt-blocked-by:: t-qa, t-copy] ^t-announce

@@ -1,6 +1,18 @@
 import { MarkdownRenderer, setIcon, type App, type Component } from "obsidian";
 import type { ColumnDef, Role, TaskNode } from "../model/types.ts";
+import type { EdgeGraph } from "../model/insights.ts";
 import { columnForRole, columnForStatus } from "../columns.ts";
+
+/** What a node's dependency badge needs to know, extracted from the board's edge graph. */
+export function dependencyInfo(
+	node: TaskNode,
+	graph: EdgeGraph,
+): { held: TaskNode[]; unresolved: string[]; onCycle: boolean } {
+	const held = graph.edges
+		.filter((e) => e.from.id === node.id && e.to.effectiveRole !== "done" && e.to.effectiveRole !== "cancelled")
+		.map((e) => e.to);
+	return { held, unresolved: graph.unresolved.get(node.id) ?? [], onCycle: graph.cycleIds.has(node.id) };
+}
 
 /** Anything that justifies a full Markdown pass; plain text takes the cheap path. */
 const MD_SYNTAX = /[[\]*_`~=#]|https?:\/\//;
@@ -84,6 +96,39 @@ export function createOverrideBadge(parent: HTMLElement, role: Role): HTMLElemen
 		attr: { "aria-label": `Manually set to ${roleLabel(role)}` },
 	});
 	setIcon(b, "lock");
+	return b;
+}
+
+/**
+ * Dependency badge for a task with `tt-blocked-by` edges. Red (ban icon) while an
+ * unfinished dependency holds it, plain link icon once everything released; warns
+ * on unresolved ids and cycles.
+ */
+export function createDependencyBadge(
+	parent: HTMLElement,
+	node: TaskNode,
+	deps: { held: TaskNode[]; unresolved: string[]; onCycle: boolean },
+): HTMLElement | null {
+	if (node.blockedBy.length === 0) return null;
+	const b = parent.createSpan({ cls: "tt-dep-badge" });
+	const problems: string[] = [];
+	if (deps.held.length > 0) {
+		b.addClass("tt-dep-held");
+		problems.push(`Waiting on: ${deps.held.map((d) => d.text || d.id).join(", ")}`);
+	}
+	if (deps.unresolved.length > 0) {
+		b.addClass("tt-dep-warn");
+		problems.push(`Unknown id${deps.unresolved.length === 1 ? "" : "s"}: ${deps.unresolved.join(", ")}`);
+	}
+	if (deps.onCycle) {
+		b.addClass("tt-dep-warn");
+		problems.push("Dependency cycle");
+	}
+	setIcon(b, deps.held.length > 0 ? "ban" : "link");
+	b.setAttribute(
+		"aria-label",
+		problems.length > 0 ? problems.join(" · ") : `Depends on ${node.blockedBy.length} task${node.blockedBy.length === 1 ? "" : "s"} (all released)`,
+	);
 	return b;
 }
 

@@ -4,6 +4,7 @@ import {
 	TFile,
 	debounce,
 	setIcon,
+	type Menu,
 	type ViewStateResult,
 	type WorkspaceLeaf,
 } from "obsidian";
@@ -14,14 +15,21 @@ import {
 	loadBoard,
 	renameBoard,
 	renameTask,
+	writeBlockedBy,
 	type BoardModel,
 } from "../board-controller.ts";
 import type { TaskNode } from "../model/types.ts";
 import { isManagedFrontmatter, MANAGED_TYPE } from "../model/okf.ts";
-import { collectBlockers, collectNextUp, computeSummary, type Insight } from "../model/insights.ts";
+import {
+	collectBlockers,
+	collectDependencyBlocked,
+	collectNextUp,
+	computeSummary,
+	type Insight,
+} from "../model/insights.ts";
 import { flatten } from "../model/parser.ts";
 import { placementColumn } from "./card.ts";
-import { promptText } from "./modals.ts";
+import { pickTask, promptText } from "./modals.ts";
 
 export const VIEW_TYPE_KANBAN = "task-tree-kanban";
 export const VIEW_TYPE_TREE = "task-tree-tree";
@@ -216,6 +224,40 @@ export abstract class TaskTreeView extends ItemView {
 		this.registerDomEvent(input, "blur", () => finish(true));
 	}
 
+	/** "Blocked by…" + "Clear dependencies" — shared by every view's context menu. */
+	protected addDependencyMenuItems(menu: Menu, node: TaskNode, model: BoardModel): void {
+		if (!node.isTask) return;
+		menu.addItem((i) =>
+			i.setTitle("Blocked by…").setIcon("link").onClick(() => this.pickDependency(node, model)),
+		);
+		if (node.blockedBy.length > 0) {
+			menu.addItem((i) =>
+				i
+					.setTitle("Clear dependencies")
+					.setIcon("unlink")
+					.onClick(() => void writeBlockedBy(this.plugin, model.file, node.line, [])),
+			);
+		}
+	}
+
+	/** Fuzzy-pick another task; choosing one toggles it in this task's blocked-by list. */
+	private pickDependency(node: TaskNode, model: BoardModel): void {
+		const candidates = flatten(model.roots).filter((t) => t.isTask && t.hasStoredId && t.id !== node.id);
+		if (candidates.length === 0) {
+			new Notice("No other tasks have block IDs yet — run 'Assign block IDs' first.");
+			return;
+		}
+		const choices = candidates.map((t) => ({
+			node: t,
+			label: `${node.blockedBy.includes(t.id) ? "✓ " : ""}${t.text || t.id}`,
+		}));
+		pickTask(this.app, "Pick the task this one waits on (pick again to remove)", choices, (target) => {
+			const has = node.blockedBy.includes(target.id);
+			const ids = has ? node.blockedBy.filter((x) => x !== target.id) : [...node.blockedBy, target.id];
+			void writeBlockedBy(this.plugin, model.file, node.line, ids);
+		});
+	}
+
 	protected boardTitle(model: BoardModel): string {
 		const t = this.app.metadataCache.getFileCache(model.file)?.frontmatter?.title;
 		return typeof t === "string" && t.length > 0 ? t : model.file.basename;
@@ -283,6 +325,10 @@ export abstract class TaskTreeView extends ItemView {
 	protected renderBlockersPanel(container: HTMLElement, model: BoardModel): void {
 		const panel = container.createDiv({ cls: "tt-panel" });
 		this.renderInsightList(panel, "Blockers", collectBlockers(model.roots), model, "Nothing blocked — clear runway.");
+		const held = collectDependencyBlocked(model.roots);
+		if (held.length > 0) {
+			this.renderInsightList(panel, "Waiting on dependencies", held, model, "");
+		}
 		this.renderInsightList(panel, "Next up", collectNextUp(model.roots).slice(0, 8), model, "No open tasks.");
 	}
 

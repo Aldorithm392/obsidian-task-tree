@@ -16,8 +16,12 @@ compatible with AI agents by following the methodology of Google's Open Knowledg
   read/write any other file.
 - **Roles are the stable layer:** `todo | doing | done | cancelled | blocked`. Columns (name + one
   status char each) map to roles; roll-up and overrides reason about roles, not raw chars.
-- **Task line:** `<indent>- [<status>] <text> [tt-override:: <role>]? ^<id>?`. Indent = one **tab**
-  per level by default. Block id `^t-<6 base36>` is the last token; existing ids are never regenerated.
+- **Task line:** `<indent>- [<status>] <text> [tt-override:: <role>]? [tt-blocked-by:: <ids>]? ^<id>?`.
+  Indent = one **tab** per level by default. Block id `^t-<6 base36>` is the last token; existing ids
+  are never regenerated.
+- **Dependencies:** `[tt-blocked-by:: t-a1, t-b2]` — bare block ids, same board. A `done`/`cancelled`
+  target releases the edge. **Separate signal: never feeds roll-up** (`resolveEdges` in
+  `insights.ts` sets `isDependencyBlocked`; `computeRollup` never sees edges).
 - **Roll-up:** post-order; override wins; leaf uses its own char; else `done` iff all non-cancelled
   children done, `blocked` if any child blocked, `doing` if any started, else `todo`. Progress `K/D`
   is rendered, never stored. Children win over a parent's char.
@@ -40,7 +44,8 @@ src/
     parser.ts          buildTree() from listItems + raw lines; flatten(); findById()
     rollup.ts          computeRollup()
     insights.ts        computeSummary / collectBlockers / collectNextUp / markBlockedPaths (dashboard)
-    writer.ts          setStatus/Override, assignIds, moveSubtree + CRUD: insert/delete/setText/addTag
+                       + resolveEdges / collectDependencyBlocked (tt-blocked-by graph, cycles)
+    writer.ts          setStatus/Override/BlockedBy, assignIds, moveSubtree + CRUD: insert/delete/setText/addTag
     ids.ts             generateId() / collectBlockIds()
     okf.ts             isManagedFrontmatter(), columnsFromFrontmatter(), index/log builders
   views/

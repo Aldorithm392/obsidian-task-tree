@@ -5,6 +5,7 @@ const LIST_RE = /^(\s*)([-*+])(\s+)(.*)$/;
 const BLOCK_ID_RE = /\s+\^([A-Za-z0-9-]+)\s*$/;
 const CHECKBOX_RE = /^\[(.)\]\s?(.*)$/;
 const OVERRIDE_RE = /\[tt-override::\s*([A-Za-z]+)\s*\]/;
+const BLOCKED_BY_RE = /\[tt-blocked-by::\s*([^\]]*)\]/;
 
 /** Map a free string to a Role, or undefined if it is not a valid role. */
 export function normalizeRole(s: string): Role | undefined {
@@ -63,6 +64,19 @@ export function parseLine(raw: string): ParsedLine {
 		}
 	}
 
+	// Extract a dependency inline field and remove it from the display text, so
+	// task titles, wikilink resolution and task-note names never see the raw ids.
+	let blockedBy: string[] | undefined;
+	const bbMatch = BLOCKED_BY_RE.exec(afterBox);
+	if (bbMatch) {
+		const ids = (bbMatch[1] ?? "")
+			.split(",")
+			.map((s) => s.trim())
+			.filter((s) => /^[A-Za-z0-9-]+$/.test(s));
+		if (ids.length > 0) blockedBy = ids;
+		afterBox = afterBox.slice(0, bbMatch.index) + afterBox.slice(bbMatch.index + bbMatch[0].length);
+	}
+
 	return {
 		indentText,
 		marker,
@@ -70,6 +84,7 @@ export function parseLine(raw: string): ParsedLine {
 		statusChar,
 		text: afterBox.trim(),
 		override,
+		blockedBy,
 		blockId,
 	};
 }

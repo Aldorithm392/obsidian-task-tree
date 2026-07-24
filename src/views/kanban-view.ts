@@ -16,7 +16,15 @@ import {
 import { flatten } from "../model/parser.ts";
 import type { ColumnDef, TaskNode } from "../model/types.ts";
 import type TaskTreePlugin from "../main.ts";
-import { breadcrumb, createOverrideBadge, createProgressBadge, placementColumn, renderTaskText } from "./card.ts";
+import {
+	breadcrumb,
+	createDependencyBadge,
+	createOverrideBadge,
+	createProgressBadge,
+	dependencyInfo,
+	placementColumn,
+	renderTaskText,
+} from "./card.ts";
 import { confirmModal, promptText } from "./modals.ts";
 
 export class KanbanView extends TaskTreeView {
@@ -98,6 +106,7 @@ export class KanbanView extends TaskTreeView {
 
 		const meta = card.createDiv({ cls: "tt-card-meta" });
 		if (node.override) createOverrideBadge(meta, node.override);
+		createDependencyBadge(meta, node, dependencyInfo(node, model.graph));
 		createProgressBadge(meta, node);
 		if (!node.isLeaf) meta.createSpan({ cls: "tt-parent-tag", text: "group" });
 		if (node.hasBlockedDescendant) {
@@ -187,6 +196,8 @@ export class KanbanView extends TaskTreeView {
 		menu.addItem((i) =>
 			i.setTitle("Delete task").setIcon("trash").onClick(() => void this.deletePrompt(node, model)),
 		);
+		menu.addSeparator();
+		this.addDependencyMenuItems(menu, node, model);
 		menu.addSeparator();
 		menu.addItem((i) =>
 			i.setTitle("Open / create note").setIcon("file-text").onClick(() => this.openTaskNote(node, model)),

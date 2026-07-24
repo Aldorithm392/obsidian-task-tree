@@ -16,6 +16,8 @@ import {
 	deleteRangeInText,
 	setTaskTextInText,
 	addTagInText,
+	setBlockedByInText,
+	clearBlockedByInText,
 } from "../src/model/writer.ts";
 import { DEFAULT_COLUMNS, validateColumns } from "../src/columns.ts";
 import { columnsFromFrontmatter } from "../src/model/okf.ts";
@@ -23,8 +25,10 @@ import { generateId } from "../src/model/ids.ts";
 import {
 	computeSummary,
 	collectBlockers,
+	collectDependencyBlocked,
 	collectNextUp,
 	markBlockedPaths,
+	resolveEdges,
 } from "../src/model/insights.ts";
 
 // ---- tiny test runner --------------------------------------------------------
@@ -471,6 +475,105 @@ test("next up lists actionable leaves, in-progress first", () => {
 		nu.map((i) => i.node.text),
 		["A1", "A2"],
 	);
+});
+
+// ---- dependencies (tt-blocked-by) --------------------------------------------
+console.log("dependencies");
+test("parseLine extracts and strips tt-blocked-by", () => {
+	const p = parseLine("- [ ] Deploy [tt-blocked-by:: t-a1, t-b2] ^t-c3");
+	assert.equal(p.text, "Deploy");
+	assert.deepEqual(p.blockedBy, ["t-a1", "t-b2"]);
+	assert.equal(p.blockId, "t-c3");
+});
+test("blocked-by coexists with an override, any order", () => {
+	const p = parseLine("- [x] Ship [tt-blocked-by:: t-a1] [tt-override:: done] ^t-z9");
+	assert.equal(p.text, "Ship");
+	assert.equal(p.override, "done");
+	assert.deepEqual(p.blockedBy, ["t-a1"]);
+});
+test("malformed ids inside the field are dropped; empty field parses as none", () => {
+	assert.deepEqual(parseLine("- [ ] X [tt-blocked-by:: t-a1, not a id!, t-b2]").blockedBy, ["t-a1", "t-b2"]);
+	assert.equal(parseLine("- [ ] X [tt-blocked-by:: ]").blockedBy, undefined);
+	assert.equal(parseLine("- [ ] X [tt-blocked-by:: ]").text, "X");
+});
+test("setBlockedByInText writes the field before the block id", () => {
+	const out = setBlockedByInText("- [ ] Deploy ^t-c3", 0, ["t-a1", "t-b2"]);
+	assert.equal(out, "- [ ] Deploy [tt-blocked-by:: t-a1, t-b2] ^t-c3");
+});
+test("setBlockedByInText replaces an existing field; empty list clears it", () => {
+	const line = "- [ ] Deploy [tt-blocked-by:: t-old] ^t-c3";
+	assert.equal(setBlockedByInText(line, 0, ["t-new"]), "- [ ] Deploy [tt-blocked-by:: t-new] ^t-c3");
+	assert.equal(setBlockedByInText(line, 0, []), "- [ ] Deploy ^t-c3");
+	assert.equal(clearBlockedByInText(line, 0), "- [ ] Deploy ^t-c3");
+});
+test("rename and tag preserve the blocked-by field", () => {
+	const line = "- [/] Old text [tt-blocked-by:: t-a1] ^t-c3";
+	assert.equal(setTaskTextInText(line, 0, "New text"), "- [/] New text [tt-blocked-by:: t-a1] ^t-c3");
+	assert.equal(addTagInText(line, 0, "urgent"), "- [/] Old text #urgent [tt-blocked-by:: t-a1] ^t-c3");
+});
+test("assignIds appends the id after the blocked-by field", () => {
+	const res = assignIdsInText("- [ ] X [tt-blocked-by:: t-a1]", { prefix: "t-", length: 6 });
+	assert.equal(res.assigned, 1);
+	assert.match(res.text, /^- \[ \] X \[tt-blocked-by:: t-a1\] \^t-[a-z0-9]{6}$/);
+});
+test("resolveEdges: unfinished dependency holds, done/cancelled release", () => {
+	const roots = parse([
+		"- [ ] API ^t-api",
+		"- [x] Schema ^t-sch",
+		"- [ ] Deploy [tt-blocked-by:: t-api, t-sch] ^t-dep",
+	]);
+	const g = resolveEdges(roots);
+	assert.equal(g.edges.length, 2);
+	const dep = roots[2];
+	assert.equal(dep.isDependencyBlocked, true); // t-api is not done
+	assert.equal(roots[0].isDependencyBlocked, false);
+	// finish the API task → everything released
+	const roots2 = parse([
+		"- [x] API ^t-api",
+		"- [x] Schema ^t-sch",
+		"- [ ] Deploy [tt-blocked-by:: t-api, t-sch] ^t-dep",
+	]);
+	resolveEdges(roots2);
+	assert.equal(roots2[2].isDependencyBlocked, false);
+});
+test("resolveEdges records unresolved ids and self-references", () => {
+	const roots = parse(["- [ ] A [tt-blocked-by:: t-ghost, t-a] ^t-a"]);
+	const g = resolveEdges(roots);
+	assert.equal(g.edges.length, 0);
+	assert.deepEqual(g.unresolved.get("t-a"), ["t-ghost", "t-a"]);
+});
+test("resolveEdges detects a dependency cycle", () => {
+	const roots = parse([
+		"- [ ] A [tt-blocked-by:: t-b] ^t-a",
+		"- [ ] B [tt-blocked-by:: t-a] ^t-b",
+		"- [ ] C [tt-blocked-by:: t-a] ^t-c",
+	]);
+	const g = resolveEdges(roots);
+	assert.ok(g.cycleIds.has("t-a"));
+	assert.ok(g.cycleIds.has("t-b"));
+	assert.ok(!g.cycleIds.has("t-c"));
+});
+test("collectDependencyBlocked surfaces held tasks with their path", () => {
+	const roots = parse([
+		"- [ ] Milestone",
+		"\t- [ ] Blocked one [tt-blocked-by:: t-x] ^t-y",
+		"- [/] X ^t-x",
+	]);
+	resolveEdges(roots);
+	const held = collectDependencyBlocked(roots);
+	assert.equal(held.length, 1);
+	assert.equal(held[0].node.text, "Blocked one");
+	assert.equal(held[0].path.map((n) => n.text).join("/"), "Milestone");
+});
+test("dependencies never leak into roll-up", () => {
+	const roots = parse([
+		"- [ ] Parent",
+		"\t- [x] Child done [tt-blocked-by:: t-q] ^t-p",
+		"- [ ] Q ^t-q",
+	]);
+	resolveEdges(roots);
+	// Child is checkbox-done; its unresolved dependency does NOT drag the parent.
+	assert.equal(roots[0].effectiveRole, "done");
 });
 
 // ---- summary -----------------------------------------------------------------

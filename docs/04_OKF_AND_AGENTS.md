@@ -68,6 +68,9 @@ an agent never has to ask "should I mark this parent done?" — that question do
 1. **Reads** the leaves (the atomic units of work) and recomputes any parent's state itself.
 2. **Writes** only leaf states (flip a status char) and, when restructuring, moves whole branches.
 3. Treats a `[tt-override:: role]` on a node as an explicit human decision to respect.
+4. Follows `[tt-blocked-by:: <id>, <id>]` edges to know what a task waits on — greppable bare block
+   ids, resolvable with one pass over the same file. An edge is released when its target is `done`
+   or `cancelled`; edges never change roll-up, so recomputation stays per-subtree.
 
 Everything the agent needs is in the text; nothing is hidden in the plugin.
 

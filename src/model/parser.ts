@@ -42,6 +42,7 @@ export function buildTree(items: RawListItem[], lines: string[], opts: ParseOpti
 			isTask,
 			text: p.text,
 			override: p.override,
+			blockedBy: p.blockedBy ?? [],
 			literalRole,
 			derivedRole: "todo",
 			effectiveRole: "todo",

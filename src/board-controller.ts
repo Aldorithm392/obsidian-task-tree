@@ -3,7 +3,7 @@ import type TaskTreePlugin from "./main.ts";
 import type { ColumnDef, RollupOptions, TaskNode } from "./model/types.ts";
 import { buildTree, flatten } from "./model/parser.ts";
 import { computeRollup } from "./model/rollup.ts";
-import { markBlockedPaths } from "./model/insights.ts";
+import { markBlockedPaths, resolveEdges, type EdgeGraph } from "./model/insights.ts";
 import { columnsFromFrontmatter } from "./model/okf.ts";
 import { getIndentUnit } from "./settings.ts";
 import {
@@ -14,6 +14,7 @@ import {
 	frontmatterEndLine,
 	insertTaskInText,
 	moveSubtreeInText,
+	setBlockedByInText,
 	setOverrideInText,
 	setStatusInText,
 	setTaskTextInText,
@@ -28,6 +29,8 @@ export interface BoardModel {
 	roots: TaskNode[];
 	columns: ColumnDef[];
 	rollupOpts: RollupOptions;
+	/** Same-board dependency edges (tt-blocked-by), with unresolved ids and cycles. */
+	graph: EdgeGraph;
 	/** First body line (after the YAML frontmatter). */
 	bodyStart: number;
 	/** The indentation this file actually uses for one level — detected, so edits match the file, not the settings. */
@@ -58,6 +61,7 @@ export async function loadBoard(plugin: TaskTreePlugin, file: TFile): Promise<Bo
 	const roots = buildTree(items, lines, { columns, unknownRole: settings.unknownRole });
 	computeRollup(roots, rollupOpts);
 	markBlockedPaths(roots);
+	const graph = resolveEdges(roots);
 
 	// One indentation level = the whitespace a child adds on top of its PARENT's indent
 	// (not a child's full leading whitespace — a root could itself be indented). Detected
@@ -74,7 +78,7 @@ export async function loadBoard(plugin: TaskTreePlugin, file: TFile): Promise<Bo
 		}
 	}
 
-	return { file, lines, roots, columns, rollupOpts, bodyStart: frontmatterEndLine(lines), indentUnit };
+	return { file, lines, roots, columns, rollupOpts, graph, bodyStart: frontmatterEndLine(lines), indentUnit };
 }
 
 /** Assign a stable ^id to every task that lacks one. Returns true if it wrote. */
@@ -119,6 +123,17 @@ export async function clearOverride(
 	line: number,
 ): Promise<void> {
 	await plugin.app.vault.process(file, (d) => clearOverrideInText(d, line));
+	await touch(plugin, file);
+}
+
+/** Replace a task's dependency list (`tt-blocked-by`); an empty list clears the field. */
+export async function writeBlockedBy(
+	plugin: TaskTreePlugin,
+	file: TFile,
+	line: number,
+	ids: string[],
+): Promise<void> {
+	await plugin.app.vault.process(file, (d) => setBlockedByInText(d, line, ids));
 	await touch(plugin, file);
 }
 

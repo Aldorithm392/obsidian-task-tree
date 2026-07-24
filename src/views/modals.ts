@@ -1,4 +1,5 @@
-import { Modal, Setting, type App } from "obsidian";
+import { FuzzySuggestModal, Modal, Setting, type App } from "obsidian";
+import type { TaskNode } from "../model/types.ts";
 
 interface PromptOptions {
 	title: string;
@@ -58,6 +59,40 @@ class PromptModal extends Modal {
 	override onClose(): void {
 		this.contentEl.empty();
 		if (!this.submitted) this.resolve(null);
+	}
+}
+
+export interface TaskChoice {
+	node: TaskNode;
+	label: string;
+}
+
+/** A fuzzy picker over the board's tasks (used to choose a dependency target). */
+export function pickTask(app: App, placeholder: string, choices: TaskChoice[], onPick: (node: TaskNode) => void): void {
+	new TaskPickModal(app, placeholder, choices, onPick).open();
+}
+
+class TaskPickModal extends FuzzySuggestModal<TaskChoice> {
+	private choices: TaskChoice[];
+	private onPick: (node: TaskNode) => void;
+
+	constructor(app: App, placeholder: string, choices: TaskChoice[], onPick: (node: TaskNode) => void) {
+		super(app);
+		this.choices = choices;
+		this.onPick = onPick;
+		this.setPlaceholder(placeholder);
+	}
+
+	getItems(): TaskChoice[] {
+		return this.choices;
+	}
+
+	getItemText(c: TaskChoice): string {
+		return c.label;
+	}
+
+	onChooseItem(c: TaskChoice): void {
+		this.onPick(c.node);
 	}
 }
 

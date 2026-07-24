@@ -18,7 +18,15 @@ import { flatten } from "../model/parser.ts";
 import { computeSummary } from "../model/insights.ts";
 import type { TaskNode, TreeLayout } from "../model/types.ts";
 import type TaskTreePlugin from "../main.ts";
-import { createOverrideBadge, createProgressBadge, createStatusChip, placementColumn, renderTaskText } from "./card.ts";
+import {
+	createDependencyBadge,
+	createOverrideBadge,
+	createProgressBadge,
+	createStatusChip,
+	dependencyInfo,
+	placementColumn,
+	renderTaskText,
+} from "./card.ts";
 import { confirmModal, promptText } from "./modals.ts";
 
 interface RowOptions {
@@ -30,6 +38,7 @@ export class TreeView extends TaskTreeView {
 	private collapsed = new Set<string>();
 	private focusId: string | null = null;
 	private fullFocus = false;
+	private showDeps = true;
 	private layout: TreeLayout;
 	private inverted = false;
 	private columnPath: string[] = [];
@@ -65,6 +74,7 @@ export class TreeView extends TaskTreeView {
 			focusId: this.focusId,
 			fullFocus: this.fullFocus,
 			columnPath: this.columnPath,
+			showDeps: this.showDeps,
 			// Only stable ^ids survive a reload; synthetic L<line> keys shift with any edit.
 			collapsed: [...this.collapsed].filter((id) => !/^L\d+$/.test(id)),
 		};
@@ -79,6 +89,7 @@ export class TreeView extends TaskTreeView {
 				fullFocus: boolean;
 				columnPath: string[];
 				collapsed: string[];
+				showDeps: boolean;
 			}>;
 			if (s.layout === "list" || s.layout === "diagram" || s.layout === "columns") this.layout = s.layout;
 			if (typeof s.inverted === "boolean") this.inverted = s.inverted;
@@ -90,6 +101,7 @@ export class TreeView extends TaskTreeView {
 			if (Array.isArray(s.collapsed)) {
 				this.collapsed = new Set(s.collapsed.filter((x): x is string => typeof x === "string"));
 			}
+			if (typeof s.showDeps === "boolean") this.showDeps = s.showDeps;
 		}
 		await super.setState(state, result);
 	}
@@ -122,6 +134,20 @@ export class TreeView extends TaskTreeView {
 			if (this.inverted) flip.addClass("is-active");
 			this.registerDomEvent(flip, "click", () => {
 				this.inverted = !this.inverted;
+				this.app.workspace.requestSaveLayout();
+				void this.render();
+			});
+		}
+
+		if (this.layout === "diagram") {
+			const deps = actions.createEl("button", {
+				cls: "tt-layout-btn tt-deps-btn",
+				attr: { "aria-label": "Show dependency edges (tt-blocked-by) between tasks" },
+			});
+			setIcon(deps, "link");
+			if (this.showDeps) deps.addClass("is-active");
+			this.registerDomEvent(deps, "click", () => {
+				this.showDeps = !this.showDeps;
 				this.app.workspace.requestSaveLayout();
 				void this.render();
 			});
@@ -217,6 +243,7 @@ export class TreeView extends TaskTreeView {
 		createStatusChip(meta, node, model.columns);
 		createProgressBadge(meta, node);
 		if (node.override) createOverrideBadge(meta, node.override);
+		createDependencyBadge(meta, node, dependencyInfo(node, model.graph));
 		if (node.hasBlockedDescendant) {
 			const warn = meta.createSpan({ cls: "tt-warn", attr: { "aria-label": "A subtask below is blocked" } });
 			setIcon(warn, "alert-triangle");
@@ -304,6 +331,7 @@ export class TreeView extends TaskTreeView {
 		// flow into it. While focused on a subtree, that node is the apex instead.
 		if (this.focusId) {
 			for (const node of roots) this.renderDiagramNode(canvas, node, model);
+			this.scheduleDependencyOverlay(canvas, model);
 			return;
 		}
 		const gnode = canvas.createDiv({ cls: "tt-dnode" });
@@ -313,6 +341,73 @@ export class TreeView extends TaskTreeView {
 			const kids = gnode.createDiv({ cls: "tt-dchildren" });
 			for (const node of roots) this.renderDiagramNode(kids, node, model);
 		}
+		this.scheduleDependencyOverlay(canvas, model);
+	}
+
+	/** Draw the tt-blocked-by edges once the diagram has a layout to measure. */
+	private scheduleDependencyOverlay(canvas: HTMLElement, model: BoardModel): void {
+		if (!this.showDeps || model.graph.edges.length === 0) return;
+		window.requestAnimationFrame(() => {
+			if (!canvas.isConnected) return; // a re-render replaced this diagram
+			this.drawDependencyEdges(canvas, model);
+		});
+	}
+
+	/**
+	 * An absolutely-positioned SVG overlay on the diagram: one dashed curve per
+	 * dependency, drawn from the enabling task to the one waiting on it. Distinct
+	 * from the solid CSS hierarchy connectors; orientation-agnostic because it uses
+	 * measured positions (so the inverted layout needs no special casing).
+	 */
+	private drawDependencyEdges(canvas: HTMLElement, model: BoardModel): void {
+		const SVG_NS = "http://www.w3.org/2000/svg";
+		const origin = canvas.getBoundingClientRect();
+		const svg = document.createElementNS(SVG_NS, "svg");
+		svg.classList.add("tt-dep-svg");
+		svg.setAttribute("width", String(canvas.scrollWidth));
+		svg.setAttribute("height", String(canvas.scrollHeight));
+
+		const boxOf = (id: string): DOMRect | null => {
+			const dnode = canvas.querySelector(`.tt-dnode[data-id="${id}"]`);
+			const box = dnode?.querySelector(":scope > .tt-dbox");
+			return box ? box.getBoundingClientRect() : null;
+		};
+
+		let drawn = 0;
+		for (const e of model.graph.edges) {
+			const from = boxOf(e.to.id); // arrow starts at the enabling task…
+			const to = boxOf(e.from.id); // …and points at the task waiting on it
+			if (!from || !to) continue; // collapsed / focused out of view
+
+			const leftToRight = to.left + to.width / 2 >= from.left + from.width / 2;
+			const x1 = (leftToRight ? from.right : from.left) - origin.left;
+			const y1 = from.top + from.height / 2 - origin.top;
+			const x2 = (leftToRight ? to.left : to.right) - origin.left;
+			const y2 = to.top + to.height / 2 - origin.top;
+			const bend = Math.max(24, Math.abs(x2 - x1) / 2);
+			const c1 = leftToRight ? x1 + bend : x1 - bend;
+			const c2 = leftToRight ? x2 - bend : x2 + bend;
+
+			const path = document.createElementNS(SVG_NS, "path");
+			path.setAttribute("d", `M ${x1} ${y1} C ${c1} ${y1}, ${c2} ${y2}, ${x2} ${y2}`);
+			path.classList.add("tt-dep-edge");
+			const released = e.to.effectiveRole === "done" || e.to.effectiveRole === "cancelled";
+			if (!released) path.classList.add("is-held");
+			if (model.graph.cycleIds.has(e.from.id) && model.graph.cycleIds.has(e.to.id)) {
+				path.classList.add("is-cycle");
+			}
+			svg.appendChild(path);
+
+			const dot = document.createElementNS(SVG_NS, "circle");
+			dot.setAttribute("cx", String(x2));
+			dot.setAttribute("cy", String(y2));
+			dot.setAttribute("r", "3");
+			dot.classList.add("tt-dep-dot");
+			if (!released) dot.classList.add("is-held");
+			svg.appendChild(dot);
+			drawn += 1;
+		}
+		if (drawn > 0) canvas.appendChild(svg);
 	}
 
 	/** The project apex (= the note): its title, overall progress, and a drop target for "lift to top level". */
@@ -502,6 +597,7 @@ export class TreeView extends TaskTreeView {
 		createStatusChip(meta, node, model.columns);
 		createProgressBadge(meta, node);
 		if (node.override) createOverrideBadge(meta, node.override);
+		createDependencyBadge(meta, node, dependencyInfo(node, model.graph));
 	}
 
 	/** Change the in-place focus. Always clears the columns drill path so the two can't desync. */
@@ -841,6 +937,8 @@ export class TreeView extends TaskTreeView {
 		menu.addItem((i) =>
 			i.setTitle("Delete task").setIcon("trash").onClick(() => void this.deletePrompt(node, model)),
 		);
+		menu.addSeparator();
+		this.addDependencyMenuItems(menu, node, model);
 		menu.addSeparator();
 		menu.addItem((i) =>
 			i.setTitle("Open / create note").setIcon("file-text").onClick(() => this.openTaskNote(node, model)),
