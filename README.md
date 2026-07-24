@@ -14,6 +14,34 @@ keeps you anchored to the big picture while you work in the weeds.
 
 ---
 
+## The philosophy — the value is in the crossing
+
+Task Tree doesn't invent anything, and that is deliberate. Nested checklists existed. Trees
+existed. Kanban existed. Notes, links, and AI agents existed. What didn't exist was the
+**crossing**: one plain Markdown checklist that is *simultaneously* a tree, a board, a web of
+linked notes, and a surface an AI can operate — with none of those views ever owning your data.
+The originality isn't in any piece; it's in what emerges where the pieces meet:
+
+- checklists × hierarchy → **roll-up that can't lie** (a parent's state derives from its children)
+- one structure × many lenses → **the same tasks as tree, board, columns, or inverted goal-flow**
+- tasks × notes → **every task can deepen into its own page**, and the wiring maintains itself
+- files × agents → **a vault that teaches AI tools to work your boards**, with zero setup
+
+Three commitments keep it honest:
+
+1. **Mental clarity is the product — not features.** Every view is just another way of presenting
+   the same structure. If a lens doesn't make the project clearer in your head, it doesn't ship.
+2. **Cross what exists instead of inventing what doesn't.** Every piece is boring and standard on
+   purpose — `- [ ]` lists, YAML, wikilinks. Boring pieces compose; clever formats trap.
+3. **Markdown is the ground truth; everything else is a lens.** Delete the plugin tomorrow and you
+   lose nothing but the views.
+
+Other excellent plugins go deep on other things — dates, recurrence, global queries. Task Tree
+deliberately doesn't clone them (yet): a capability joins only when it can pass through this filter.
+That future lives in the [roadmap](ROADMAP.md), behind the philosophy, never in front of it.
+
+---
+
 ## The three axes
 
 A task lives in three orthogonal dimensions, and Task Tree shows all three:

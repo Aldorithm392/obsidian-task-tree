@@ -82,6 +82,21 @@ migration, a `tt_version` key can be introduced then, opt-in.
   never feeds roll-up — so each file's state stays recomputable from that file alone. The user sees the
   real depth of everything they do and documents each task as far as their project goes.
 
+## Later — through the philosophy's filter
+
+Capabilities other plugins already do well, deliberately not cloned yet. Each may join **only** if
+it passes the three commitments in the README (clarity is the product · cross standard pieces ·
+Markdown stays the ground truth) — announced in the file, recomputable from the file, never hidden
+plugin state:
+
+- **Dates & scheduling** — a `tt-due::`-style announced field could give boards a time lens
+  (timeline / "what's due" views) without emoji metadata or hidden state.
+- **Recurrence** — only if a recurring task can be expressed legibly in the line itself.
+- **Global queries** — "every blocked task across all boards" as a lens over the OKF bundle
+  (`index.md` already lists the boards; insights already compute per board).
+- **Tasks-plugin interop** — read their statuses gracefully (status chars already align); never
+  emit their emoji format.
+
 ## On the horizon (from the design doc)
 
 - **Provenance metadata** — an optional, lightweight note like "completed by an agent on 2026-07-19"
