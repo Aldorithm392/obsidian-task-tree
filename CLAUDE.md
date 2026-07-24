@@ -38,10 +38,14 @@ compatible with AI agents by following the methodology of Google's Open Knowledg
 
 ```
 src/
-  main.ts              plugin: views, commands, ribbon, settings, activateView
+  main.ts              plugin: views, commands, ribbon, settings, activateView, leaf-rebind on rename,
+                       maybeOfferAgentSetup (consent-once agent onboarding)
   settings.ts          TaskTreeSettings + DEFAULT_SETTINGS + settings tab; getIndentUnit()
   columns.ts           char <-> column <-> role mapping; validateColumns()
-  board-controller.ts  loadBoard(), ensureIds(), writeStatus/Override/moveNode (vault.process)
+  board-controller.ts  loadBoard() (+ debounced note reconcile), ensureIds(), writeStatus/Override/
+                       BlockedBy/moveNode (vault.process), task=note create/resolve, reconcileBoardNotes
+  agent-setup.ts       maintains vault AGENTS.md managed section + .claude/skills/task-tree
+                       (CONTRACT.md + SKILL.md bundled as text via esbuild loader)
   model/               PURE, no 'obsidian' import (unit-tested under Node):
     types.ts           Role, TreeLayout, ColumnDef, RawListItem, ParsedLine, TaskNode, RollupOptions
     line.ts            parseLine()
@@ -49,6 +53,8 @@ src/
     rollup.ts          computeRollup()
     insights.ts        computeSummary / collectBlockers / collectNextUp / markBlockedPaths (dashboard)
                        + resolveEdges / collectDependencyBlocked (tt-blocked-by graph, cycles)
+    notemeta.ts        expectedNoteFields / noteFieldsDrift — single source of truth for task-note
+                       structural frontmatter (creation + reconcile build from it)
     writer.ts          setStatus/Override/BlockedBy, assignIds, moveSubtree + CRUD: insert/delete/setText/addTag
     ids.ts             generateId() / collectBlockIds()
     okf.ts             isManagedFrontmatter(), columnsFromFrontmatter(), index/log builders

@@ -204,6 +204,30 @@ Writers MUST preserve this field (like the override and the id) when rewriting a
 
 ---
 
+## 4c. Task-notes (`type: task-note`)
+
+Any task can have its **own note** — for progress, code, research, or deeper checklists. The
+contract:
+
+- A task's own note is its **trailing** `[[wikilink]]`; a link earlier in the text is an ordinary
+  cross-reference. The plugin appends the link when it creates the note.
+- The note's frontmatter is **self-describing** so an agent can read where the task sits without
+  reconstructing the tree: `type: task-note`, `title`, `board` (link), `parent`, `depth`,
+  `distance_to_main`, `path`, `task_id`.
+- **These structural keys are plugin-managed and reconciled on every board render** — no matter who
+  restructured the board (the plugin, an AI agent editing the raw Markdown, or a hand edit),
+  positions self-heal. Hand edits to those keys are reconciled away; the note's *content* below the
+  frontmatter is never touched. The `board` link is validated by resolution, so moving the board (or
+  the note) between folders causes no churn.
+- Deleting a task stamps its note (and its subtree's notes) with `task_status: orphaned` — visible
+  and queryable, never destructive. If the task comes back (undo), the next reconcile clears the
+  marker.
+
+Machine-readable field tables live in [`agent/CONTRACT.md`](agent/CONTRACT.md), which is
+conformance-tested against the parser.
+
+---
+
 ## 5. Two operations, kept textually distinct
 
 **Operation B — change state.** Exactly one status character changes:

@@ -53,37 +53,25 @@ migration, a `tt_version` key can be introduced then, opt-in.
 - **Drag-reparent everywhere** + "Nest under…" and deterministic Move up/down / Indent / Outdent.
 - `author` / GitHub handle filled in `manifest.json`.
 
-## Next (path to 1.0)
+## Shipped (v1.0 — released 2026-07-24, submitted to the community directory)
 
-**Now — finish "the plugin owns the files"**
-- [ ] YAML `title` = note title: renaming the board renames the file (links rewritten via
-  `fileManager.renameFile`).
-
-**Polish — ship-quality views**
-- [ ] Render card/node text as Markdown (links, tags) via `MarkdownRenderer` — task-note `[[links]]`
-  must render as links, not raw brackets.
-- [ ] Persist collapse state per board across reloads (stable `^ids` only).
-- [ ] Per-column colors and WIP-limit inputs in settings (Kanban already renders both).
-- [ ] `index.md` / `log.md` bundle commands (helpers already exist in `okf.ts`).
-
-**The graph — connect tasks to each other**
-- [ ] `tt-blocked-by` inline field: same-board dependencies by block id; cycle + unresolved-id
-  detection; dependency badge in every view; dashed dependency edges in the diagram layout.
-  Dependency-blocked is a *separate signal* — it never feeds roll-up, so a parent's state stays
-  recomputable from its own leaves.
-
-**Agent-ready, for real**
-- [ ] `AGENTS.md` operating contract at the repo root: the gate, the grammar, roll-up semantics,
-  Operation A vs B, the invariants an agent must never break, and the human/AI division of labor.
-- [ ] `docs/agent/CONTRACT.md` — machine-readable tables (line grammar, roles, reserved `tt-` fields,
-  frontmatter keys), conformance-tested against `src/model/line.ts`.
-- [ ] An installable Claude Code skill (`skills/task-tree/`) with recipes for operating boards in a
-  documentation vault.
-
-**Ship 1.0**
-- [ ] ESLint + `eslint-plugin-obsidianmd`; compliance sweep (`normalizePath`, sentence case, no `any`).
-- [ ] Manual QA in a real vault (`docs/dev/QA_CHECKLIST.md`); mobile-width check.
-- [ ] Tag `1.0.0`; submit to the community plugin directory; README install + agent sections.
+- **The plugin owns the files:** renaming a board renames the file, inbound `[[links]]` rewritten.
+- **Ship-quality views:** Markdown-rendered task text (fast plain-text path), persisted collapse
+  state, per-column colors + WIP-limit inputs, `index.md` / `log.md` commands.
+- **Capture flow:** every add drops straight into inline edit; Enter chains the next sibling;
+  abandoned placeholders remove themselves.
+- **The graph:** `tt-blocked-by` same-board dependencies — cycle + unresolved-id detection,
+  badges in every view, "Waiting on dependencies" panel, dashed edges in the diagram. A *separate
+  signal*: never feeds roll-up.
+- **YAML integrity:** task-note frontmatter reconciles on every render, cause-agnostically (plugin,
+  agent, or hand edits); deleted tasks mark notes `task_status: orphaned` (undo clears); "Resync all
+  task-note frontmatter" command.
+- **Agent-ready, embedded:** `AGENTS.md` contract + conformance-tested `docs/agent/CONTRACT.md` +
+  `skills/task-tree/` — all bundled into `main.js`; one-time consent lets the plugin maintain the
+  instructions and skill *inside the user's vault*, forever.
+- **Release engineering:** ESLint + `eslint-plugin-obsidianmd` (0 errors), CI, two live UX/CX QA
+  rounds (`docs/dev/UX_QA_FINDINGS.md`), build-provenance attestations, release 1.0.0 published,
+  directory submission live.
 
 ## Next after 1.0 (v1.1 — depth through notes)
 

@@ -88,6 +88,10 @@ Drop a board in a project folder and it becomes the project's command center —
 AI agent you point at the folder (see below). From one place you can **rename the board, add, delete,
 rename, and tag tasks** (right-click a task, or double-click to rename; "Add task" in the header).
 
+**Capture is built for speed:** "Add task" opens the new row already in edit mode — type, press
+**Enter**, and the next task is already waiting. Esc (or leaving it empty) cleans up after itself.
+Renaming the board renames the file too, with every inbound `[[link]]` rewritten.
+
 It's also built to surface the thing that quietly derails projects: **you think a milestone is done,
 then a deep subtask blocks it.** Instead of getting ambushed, you get:
 
@@ -102,10 +106,23 @@ Open it with **"Open current file as dashboard"** (or the ribbon icon).
 ### Three tree layouts + full focus
 
 The **tree** view can be drawn three ways (toolbar switch, remembered per board): **List** (vertical),
-**Diagram** (a horizontal tree — the goal on the left, atomic blockers on the right, so completion
-visibly flows right→left), and **Columns** (drill down level by level, Finder-style). A **focus
-button** on any task opens it and its subtree in a distraction-free full-width pane, with a breadcrumb
-to step back out.
+**Diagram** (a horizontal tree with the board's goal as its apex — flip it with the **invert** toggle
+so enabling tasks flow *into* the goal), and **Columns** (drill down level by level, Finder-style).
+A **focus button** on any task opens it and its subtree in a distraction-free full-width pane, with a
+breadcrumb to step back out.
+
+### Task = note: every task can be its own page
+
+Right-click any task → **"Open / create note"** and the task gets its own note — for progress, code,
+research, or its own deeper checklists — linked from the task line and carrying **self-describing
+frontmatter** (`board`, `parent`, `depth`, `path`, `task_id`) so both you and an agent can read where
+it sits without opening the board.
+
+That frontmatter **maintains itself**: every time the board renders, the plugin reconciles each
+note's structural fields against the live tree — no matter who moved, renamed, or restructured the
+tasks (you, the plugin, or an AI editing the raw Markdown). Deleting a task marks its note
+`task_status: orphaned` (undo clears it); the note's *content* is never touched. A "Resync all
+task-note frontmatter" command exists as a manual escape hatch.
 
 ---
 
@@ -133,6 +150,7 @@ Obsidian/Tasks convention.
 - Open a board… (picker)
 - Build the boards index (`index.md`)
 - Append an entry to the boards log (`log.md`)
+- Resync all task-note frontmatter
 
 ---
 
@@ -145,7 +163,13 @@ board is an OKF *concept* (frontmatter + body), a vault of boards is an OKF *bun
 is deterministically recomputable from the leaves — so an agent only ever needs to read and write the
 leaves. Details in [`docs/04_OKF_AND_AGENTS.md`](docs/04_OKF_AND_AGENTS.md).
 
-Task Tree ships that promise as working material, not prose:
+And the plugin does the onboarding **for** you: the first time you open a board, it offers — once —
+to add agent instructions to your vault. Say yes and it maintains a managed `AGENTS.md` section plus
+a project-level Claude Code skill (`.claude/skills/task-tree/`) *inside the vault*, kept current on
+every plugin update, never touching your own content. Open the vault with Claude Code, Cursor, or
+Codex and the AI already knows the rules. Zero setup, forever.
+
+The teaching material also lives in this repo:
 
 - **[`AGENTS.md`](AGENTS.md)** — the operating contract an agent follows to work a board *with* you:
   the opt-in gate, the grammar, roll-up it can recompute itself, the invariants it must never break,
