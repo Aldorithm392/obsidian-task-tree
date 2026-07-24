@@ -19,8 +19,16 @@
 		"okf",
 		"task-management"
 	],
-	"author": "Saul",
+	"author": "Aldorithm392",
 	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Aldorithm392/obsidian-task-tree.git"
+	},
+	"bugs": {
+		"url": "https://github.com/Aldorithm392/obsidian-task-tree/issues"
+	},
+	"homepage": "https://github.com/Aldorithm392/obsidian-task-tree#readme",
 	"devDependencies": {
 		"@types/node": "^22.15.17",
 		"@types/sortablejs": "^1.15.8",
