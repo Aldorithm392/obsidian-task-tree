@@ -44,7 +44,11 @@ export function columnsFromFrontmatter(
 		let id = slug(name);
 		while (usedIds.has(id)) id += "-2";
 		usedIds.add(id);
-		cols.push({ id, name, status, role: roleStr as Role });
+		const col: ColumnDef = { id, name, status, role: roleStr as Role };
+		if (typeof e["color"] === "string" && e["color"]) col.color = e["color"] as string;
+		const wip = e["wipLimit"];
+		if (typeof wip === "number" && Number.isFinite(wip) && wip > 0) col.wipLimit = Math.floor(wip);
+		cols.push(col);
 	}
 	return cols.length ? cols : fallback;
 }

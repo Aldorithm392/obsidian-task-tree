@@ -1,6 +1,42 @@
-import { setIcon } from "obsidian";
+import { MarkdownRenderer, setIcon, type App, type Component } from "obsidian";
 import type { ColumnDef, Role, TaskNode } from "../model/types.ts";
 import { columnForRole, columnForStatus } from "../columns.ts";
+
+/** Anything that justifies a full Markdown pass; plain text takes the cheap path. */
+const MD_SYNTAX = /[[\]*_`~=#]|https?:\/\//;
+
+/**
+ * Render a task's text into `parent`: plain span when there is no Markdown in it
+ * (the common case — keeps big boards cheap), full MarkdownRenderer otherwise, so
+ * task-note [[links]], tags and emphasis render properly. Clicking an internal
+ * link opens it; the caller's edit trigger should ignore clicks on links.
+ */
+export function renderTaskText(
+	app: App,
+	component: Component,
+	parent: HTMLElement,
+	cls: string,
+	text: string,
+	sourcePath: string,
+): HTMLElement {
+	const host = parent.createSpan({ cls });
+	const t = text || "(untitled)";
+	if (!MD_SYNTAX.test(t)) {
+		host.setText(t);
+		return host;
+	}
+	host.addClass("tt-md");
+	void MarkdownRenderer.render(app, t, host, sourcePath, component);
+	host.addEventListener("click", (e) => {
+		const a = (e.target as HTMLElement).closest("a.internal-link");
+		if (!a || !host.contains(a)) return;
+		e.preventDefault();
+		e.stopPropagation();
+		const href = a.getAttribute("data-href") ?? a.getAttribute("href");
+		if (href) void app.workspace.openLinkText(href, sourcePath, true);
+	});
+	return host;
+}
 
 export function roleLabel(role: Role): string {
 	return role.charAt(0).toUpperCase() + role.slice(1);

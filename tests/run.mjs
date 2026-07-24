@@ -18,6 +18,7 @@ import {
 	addTagInText,
 } from "../src/model/writer.ts";
 import { DEFAULT_COLUMNS, validateColumns } from "../src/columns.ts";
+import { columnsFromFrontmatter } from "../src/model/okf.ts";
 import { generateId } from "../src/model/ids.ts";
 import {
 	computeSummary,
@@ -392,6 +393,28 @@ test("duplicate status character is rejected", () => {
 		{ id: "b", name: "B", status: " ", role: "done" },
 	];
 	assert.ok(validateColumns(bad).some((e) => e.includes("status character")));
+});
+test("non-positive WIP limit is rejected; positive passes", () => {
+	const cols = [
+		{ id: "todo", name: "To Do", status: " ", role: "todo" },
+		{ id: "done", name: "Done", status: "x", role: "done", wipLimit: 0 },
+	];
+	assert.ok(validateColumns(cols).some((e) => e.includes("WIP limit")));
+	cols[1].wipLimit = 3;
+	assert.deepEqual(validateColumns(cols), []);
+});
+test("tt_columns round-trips color and wipLimit", () => {
+	const fm = {
+		tt_columns: [
+			{ name: "To Do", status: " ", role: "todo", color: "#8888ff", wipLimit: 4 },
+			{ name: "Done", status: "x", role: "done", wipLimit: 0 }, // invalid limit → dropped
+		],
+	};
+	const cols = columnsFromFrontmatter(fm, DEFAULT_COLUMNS);
+	assert.equal(cols[0].color, "#8888ff");
+	assert.equal(cols[0].wipLimit, 4);
+	assert.equal(cols[1].color, undefined);
+	assert.equal(cols[1].wipLimit, undefined);
 });
 
 // ---- writer: CRUD ------------------------------------------------------------

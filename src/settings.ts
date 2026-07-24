@@ -64,7 +64,7 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 		containerEl.createEl("p", {
 			cls: "setting-item-description",
 			text:
-				"These are the default Kanban columns. A board can override them per-file with a tt_columns key in its frontmatter. Each column maps to one checkbox character; roles drive roll-up.",
+				"These are the default Kanban columns. A board can override them per-file with a tt_columns key in its frontmatter. Each column maps to one checkbox character; roles drive roll-up. Color tints the column and its chips; the WIP limit flags a column that holds more cards than it should.",
 		});
 
 		this.renderColumns(containerEl);
@@ -249,6 +249,39 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
+			setting.addColorPicker((c) => {
+				// The picker can't be empty, so "no color" = the default falls back at render time.
+				if (col.color) c.setValue(col.color);
+				c.onChange(async (v) => {
+					col.color = v;
+					await this.plugin.saveSettings();
+				});
+			});
+			setting.addText((t) => {
+				t.inputEl.type = "number";
+				t.inputEl.min = "1";
+				t.inputEl.addClass("tt-wip-input");
+				t
+					.setPlaceholder("WIP")
+					.setValue(col.wipLimit !== undefined ? String(col.wipLimit) : "")
+					.onChange(async (v) => {
+						const n = Number.parseInt(v, 10);
+						if (v.trim() === "") delete col.wipLimit;
+						else if (Number.isFinite(n) && n > 0) col.wipLimit = n;
+						await this.plugin.saveSettings();
+					});
+			});
+			setting.addExtraButton((b) =>
+				b
+					.setIcon("eraser")
+					.setTooltip("Clear color and WIP limit")
+					.onClick(async () => {
+						delete col.color;
+						delete col.wipLimit;
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+			);
 			setting.addExtraButton((b) =>
 				b
 					.setIcon("trash")

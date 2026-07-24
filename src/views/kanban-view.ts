@@ -16,7 +16,7 @@ import {
 import { flatten } from "../model/parser.ts";
 import type { ColumnDef, TaskNode } from "../model/types.ts";
 import type TaskTreePlugin from "../main.ts";
-import { breadcrumb, createOverrideBadge, createProgressBadge, placementColumn } from "./card.ts";
+import { breadcrumb, createOverrideBadge, createProgressBadge, placementColumn, renderTaskText } from "./card.ts";
 import { confirmModal, promptText } from "./modals.ts";
 
 export class KanbanView extends TaskTreeView {
@@ -89,8 +89,9 @@ export class KanbanView extends TaskTreeView {
 
 		breadcrumb(card, this.parentChain(node));
 		const main = card.createDiv({ cls: "tt-card-main" });
-		const textEl = main.createSpan({ cls: "tt-card-text", text: node.text || "(untitled)" });
+		const textEl = renderTaskText(this.app, this, main, "tt-card-text", node.text, model.file.path);
 		this.registerDomEvent(textEl, "click", (e) => {
+			if ((e.target as HTMLElement).closest("a")) return; // links navigate; they don't start an edit
 			e.stopPropagation();
 			this.startInlineEdit(textEl, node, model);
 		});

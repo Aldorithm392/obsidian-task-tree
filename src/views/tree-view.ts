@@ -18,7 +18,7 @@ import { flatten } from "../model/parser.ts";
 import { computeSummary } from "../model/insights.ts";
 import type { TaskNode, TreeLayout } from "../model/types.ts";
 import type TaskTreePlugin from "../main.ts";
-import { createOverrideBadge, createProgressBadge, createStatusChip, placementColumn } from "./card.ts";
+import { createOverrideBadge, createProgressBadge, createStatusChip, placementColumn, renderTaskText } from "./card.ts";
 import { confirmModal, promptText } from "./modals.ts";
 
 interface RowOptions {
@@ -65,6 +65,8 @@ export class TreeView extends TaskTreeView {
 			focusId: this.focusId,
 			fullFocus: this.fullFocus,
 			columnPath: this.columnPath,
+			// Only stable ^ids survive a reload; synthetic L<line> keys shift with any edit.
+			collapsed: [...this.collapsed].filter((id) => !/^L\d+$/.test(id)),
 		};
 	}
 
@@ -76,6 +78,7 @@ export class TreeView extends TaskTreeView {
 				focusId: string | null;
 				fullFocus: boolean;
 				columnPath: string[];
+				collapsed: string[];
 			}>;
 			if (s.layout === "list" || s.layout === "diagram" || s.layout === "columns") this.layout = s.layout;
 			if (typeof s.inverted === "boolean") this.inverted = s.inverted;
@@ -83,6 +86,9 @@ export class TreeView extends TaskTreeView {
 			if (typeof s.fullFocus === "boolean") this.fullFocus = s.fullFocus;
 			if (Array.isArray(s.columnPath)) {
 				this.columnPath = s.columnPath.filter((x): x is string => typeof x === "string");
+			}
+			if (Array.isArray(s.collapsed)) {
+				this.collapsed = new Set(s.collapsed.filter((x): x is string => typeof x === "string"));
 			}
 		}
 		await super.setState(state, result);
@@ -199,9 +205,10 @@ export class TreeView extends TaskTreeView {
 			});
 		}
 
-		const text = host.createSpan({ cls: "tt-node-text", text: node.text || "(untitled)" });
+		const text = renderTaskText(this.app, this, host, "tt-node-text", node.text, model.file.path);
 		if (node.effectiveRole === "done") text.addClass("tt-done");
 		this.registerDomEvent(text, opts.editTrigger, (e) => {
+			if ((e.target as HTMLElement).closest("a")) return; // links navigate; they don't start an edit
 			e.stopPropagation();
 			this.startInlineEdit(text, node, model);
 		});
@@ -532,6 +539,7 @@ export class TreeView extends TaskTreeView {
 	private toggleCollapse(id: string): void {
 		if (this.collapsed.has(id)) this.collapsed.delete(id);
 		else this.collapsed.add(id);
+		this.app.workspace.requestSaveLayout();
 		void this.render();
 	}
 

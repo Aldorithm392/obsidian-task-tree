@@ -217,6 +217,30 @@
 	cursor: pointer;
 	font-size: var(--font-ui-small);
 }
+/* Markdown-rendered task text: keep block elements inline so a card stays one line-box. */
+.tt-md p,
+.tt-md h1,
+.tt-md h2,
+.tt-md h3,
+.tt-md h4,
+.tt-md h5,
+.tt-md h6 {
+	display: inline;
+	margin: 0;
+	font-size: inherit;
+	font-weight: inherit;
+	line-height: inherit;
+}
+.tt-md ul,
+.tt-md ol {
+	display: inline;
+	margin: 0;
+	padding: 0;
+}
+.tt-md.tt-done a,
+.tt-md.tt-done .tag {
+	color: inherit;
+}
 .tt-node-text.tt-done {
 	color: var(--text-muted);
 	text-decoration: line-through;
@@ -373,6 +397,10 @@
 /* ---- settings ---- */
 .tt-column-row .tt-status-input {
 	width: 3ch;
+	text-align: center;
+}
+.tt-column-row .tt-wip-input {
+	width: 6ch;
 	text-align: center;
 }
 .tt-settings-warning {

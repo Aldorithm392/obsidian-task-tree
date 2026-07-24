@@ -74,6 +74,10 @@ export function validateColumns(columns: ColumnDef[]): string[] {
 		} else {
 			seenStatus.set(key, c.name);
 		}
+
+		if (c.wipLimit !== undefined && (!Number.isFinite(c.wipLimit) || c.wipLimit <= 0)) {
+			errors.push(`Column "${c.name}" has an invalid WIP limit (must be a positive number).`);
+		}
 	}
 	if (!columns.some((c) => c.role === "todo")) {
 		errors.push('No column has the "todo" role; new/unstarted tasks will have nowhere to live.');

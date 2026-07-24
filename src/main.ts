@@ -1,10 +1,10 @@
-import { FuzzySuggestModal, Notice, Plugin, TFile, type App } from "obsidian";
+import { FuzzySuggestModal, Notice, Plugin, TFile, normalizePath, type App } from "obsidian";
 import { DEFAULT_SETTINGS, TaskTreeSettingTab, type TaskTreeSettings } from "./settings.ts";
 import { KanbanView } from "./views/kanban-view.ts";
 import { TreeView } from "./views/tree-view.ts";
 import { DashboardView } from "./views/dashboard-view.ts";
 import { TaskTreeView, VIEW_TYPE_DASHBOARD, VIEW_TYPE_KANBAN, VIEW_TYPE_TREE } from "./views/base-view.ts";
-import { isManagedFrontmatter, MANAGED_TYPE } from "./model/okf.ts";
+import { appendLogEntry, buildIndexMd, isManagedFrontmatter, MANAGED_TYPE } from "./model/okf.ts";
 import { assignIdsInText } from "./model/writer.ts";
 import { createBoardFile, syncTaskNotesForMove } from "./board-controller.ts";
 import { promptText } from "./views/modals.ts";
@@ -77,6 +77,81 @@ export default class TaskTreePlugin extends Plugin {
 			name: "Open a Task Tree board…",
 			callback: () => new BoardPicker(this.app, this).open(),
 		});
+		this.addCommand({
+			id: "build-index",
+			name: "Build the boards index (index.md)",
+			callback: () => void this.buildIndexCommand(),
+		});
+		this.addCommand({
+			id: "append-log",
+			name: "Append an entry to the boards log (log.md)",
+			callback: () => void this.appendLogCommand(),
+		});
+	}
+
+	/** Every managed board in the vault (frontmatter `type: task-tree`). */
+	managedBoards(): TFile[] {
+		return this.app.vault
+			.getMarkdownFiles()
+			.filter((f) =>
+				isManagedFrontmatter(
+					this.app.metadataCache.getFileCache(f)?.frontmatter as Record<string, unknown> | undefined,
+				),
+			);
+	}
+
+	/** Regenerate the OKF `index.md` bundle file: one link per managed board. */
+	private async buildIndexCommand(): Promise<void> {
+		const dir = this.settings.newBoardFolder;
+		const indexPath = normalizePath(dir ? `${dir}/index.md` : "index.md");
+		const entries = this.managedBoards()
+			.map((f) => {
+				const fm = this.app.metadataCache.getFileCache(f)?.frontmatter as Record<string, unknown> | undefined;
+				const title = typeof fm?.["title"] === "string" && fm["title"] ? (fm["title"] as string) : f.basename;
+				const description = typeof fm?.["description"] === "string" ? (fm["description"] as string) : undefined;
+				return { path: relPath(dir, f.path), title, description };
+			})
+			.sort((a, b) => a.title.localeCompare(b.title));
+		const content = buildIndexMd(entries);
+		await this.writeBundleFile(indexPath, () => content, (d) => (d === content ? d : content));
+		new Notice(`Indexed ${entries.length} board${entries.length === 1 ? "" : "s"} in ${indexPath}.`);
+	}
+
+	/** Prompt for a line and prepend it to the OKF `log.md` under today's date. */
+	private async appendLogCommand(): Promise<void> {
+		const entry = await promptText(this.app, {
+			title: "Log entry",
+			placeholder: "What happened?",
+			cta: "Add to log",
+		});
+		if (!entry) return;
+		const dir = this.settings.newBoardFolder;
+		const logPath = normalizePath(dir ? `${dir}/log.md` : "log.md");
+		const date = new Date().toISOString().slice(0, 10);
+		await this.writeBundleFile(logPath, () => appendLogEntry("", date, entry), (d) => appendLogEntry(d, date, entry));
+		new Notice(`Logged under ${date} in ${logPath}.`);
+	}
+
+	/** Create (or update, via vault.process) a bundle file, making its folder first if needed. */
+	private async writeBundleFile(
+		path: string,
+		create: () => string,
+		update: (existing: string) => string,
+	): Promise<void> {
+		const existing = this.app.vault.getAbstractFileByPath(path);
+		if (existing instanceof TFile) {
+			await this.app.vault.process(existing, update);
+			return;
+		}
+		const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+		if (dir && !this.app.vault.getAbstractFileByPath(dir)) {
+			try {
+				await this.app.vault.createFolder(dir);
+			} catch {
+				// already exists / race — ignore
+			}
+		}
+		await this.app.vault.create(path, create());
 	}
 
 	/** Remember that a moved task's note needs a frontmatter resync on the next cache refresh. */
@@ -194,6 +269,16 @@ export default class TaskTreePlugin extends Plugin {
 	}
 }
 
+/** Vault path of `to`, relative to the folder `fromDir` ("" = vault root). */
+function relPath(fromDir: string, to: string): string {
+	if (!fromDir) return to;
+	const from = fromDir.split("/");
+	const parts = to.split("/");
+	let i = 0;
+	while (i < from.length && from[i] === parts[i]) i++;
+	return [...(Array(from.length - i).fill("..") as string[]), ...parts.slice(i)].join("/");
+}
+
 class BoardPicker extends FuzzySuggestModal<TFile> {
 	private plugin: TaskTreePlugin;
 
@@ -204,13 +289,7 @@ class BoardPicker extends FuzzySuggestModal<TFile> {
 	}
 
 	getItems(): TFile[] {
-		return this.app.vault
-			.getMarkdownFiles()
-			.filter((f) =>
-				isManagedFrontmatter(
-					this.app.metadataCache.getFileCache(f)?.frontmatter as Record<string, unknown> | undefined,
-				),
-			);
+		return this.plugin.managedBoards();
 	}
 
 	getItemText(file: TFile): string {
