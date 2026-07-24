@@ -7,6 +7,10 @@ on:
 
 permissions:
   contents: write
+  # Artifact attestations: users can cryptographically verify the release assets
+  # were built from this repository (flagged by the community-directory review).
+  id-token: write
+  attestations: write
 
 jobs:
   build:
@@ -24,6 +28,13 @@ jobs:
           npm install
           npm run build
 
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            main.js
+            styles.css
+
       - name: Create release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -31,4 +42,5 @@ jobs:
           tag="${GITHUB_REF#refs/tags/}"
           gh release create "$tag" \
             --title="$tag" \
+            --generate-notes \
             main.js manifest.json styles.css
