@@ -99,6 +99,8 @@ export interface TaskNode {
 	hasBlockedDescendant?: boolean;
 	/** Set by resolveEdges: an unfinished `tt-blocked-by` dependency holds this task up. */
 	isDependencyBlocked?: boolean;
+	/** Set by loadBoard: the trailing [[link]] target when it is this task's OWN note. */
+	ownNoteLink?: string;
 }
 
 export interface RollupOptions {

@@ -24,6 +24,7 @@ import {
 	dependencyInfo,
 	placementColumn,
 	renderTaskText,
+	taskDisplayText,
 } from "./card.ts";
 import { confirmModal, promptText } from "./modals.ts";
 
@@ -93,11 +94,20 @@ export class KanbanView extends TaskTreeView {
 		const card = list.createDiv({ cls: "tt-card" });
 		card.dataset.id = node.id;
 		card.dataset.line = String(node.line);
-		card.setAttribute("data-task", node.statusChar);
+		// Our own status hook — deliberately NOT `data-task`, which Obsidian's core CSS
+		// styles for alternative checkboxes and would repaint our checkboxes.
+		card.setAttribute("data-status", node.statusChar);
 
 		breadcrumb(card, this.parentChain(node));
 		const main = card.createDiv({ cls: "tt-card-main" });
-		const textEl = renderTaskText(this.app, this, main, "tt-card-text", node.text, model.file.path);
+		const textEl = renderTaskText(
+			this.app,
+			this,
+			main,
+			"tt-card-text",
+			taskDisplayText(node, this.plugin.settings.showTaskNoteLink),
+			model.file.path,
+		);
 		this.registerDomEvent(textEl, "click", (e) => {
 			if ((e.target as HTMLElement).closest("a")) return; // links navigate; they don't start an edit
 			e.stopPropagation();
@@ -139,7 +149,7 @@ export class KanbanView extends TaskTreeView {
 		while (pid && guard++ < 20) {
 			const p = this.byId.get(pid);
 			if (!p) break;
-			chain.unshift(p.text || "…");
+			chain.unshift(taskDisplayText(p) || "…");
 			pid = p.parentId;
 		}
 		return chain.slice(-2);
@@ -224,8 +234,9 @@ export class KanbanView extends TaskTreeView {
 	}
 
 	private async renamePrompt(node: TaskNode, model: BoardModel): Promise<void> {
-		const name = await promptText(this.app, { title: "Rename task", initial: node.text, cta: "Rename" });
-		if (name) await renameTask(this.plugin, model.file, node, name);
+		const { base, suffix } = this.editableParts(node);
+		const name = await promptText(this.app, { title: "Rename task", initial: base, cta: "Rename" });
+		if (name && name !== base) await renameTask(this.plugin, model.file, node, name + suffix);
 	}
 
 	private async tagPrompt(node: TaskNode, model: BoardModel): Promise<void> {
@@ -238,7 +249,7 @@ export class KanbanView extends TaskTreeView {
 			node.children.length > 0
 				? await confirmModal(this.app, {
 						title: "Delete task and its subtasks?",
-						body: `"${node.text}" and everything under it will be removed.`,
+						body: `"${taskDisplayText(node)}" and everything under it will be removed.`,
 						cta: "Delete",
 					})
 				: true;

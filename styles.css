@@ -277,6 +277,12 @@
 .tt-card:hover .tt-row-btn {
 	opacity: 0.75;
 }
+/* A task that HAS a note keeps its file icon faintly visible — the hidden [[link]]
+   still announces itself without repeating the title. */
+.tt-note-btn.has-note {
+	opacity: 0.45;
+	color: var(--interactive-accent);
+}
 .tt-focus-btn:hover,
 .tt-row-btn:hover {
 	opacity: 1;
@@ -672,7 +678,12 @@ h2.tt-dash-title {
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-s);
 	background: var(--background-secondary);
-	white-space: nowrap;
+	/* Long titles wrap inside a bounded box instead of stretching the whole diagram. */
+	max-width: 420px;
+	white-space: normal;
+}
+.tt-dbox .tt-node-text {
+	min-width: 0;
 }
 .tt-dchildren {
 	display: flex;
@@ -752,7 +763,7 @@ h2.tt-dash-title {
    (renderColumns), NOT via flex-direction: row-reverse, which would overflow
    unreachably to the left inside the horizontal scroll container. */
 .tt-column-pane {
-	flex: 0 0 240px;
+	flex: 0 0 300px;
 	display: flex;
 	flex-direction: column;
 	border-right: 1px solid var(--background-modifier-border);
@@ -775,10 +786,24 @@ h2.tt-dash-title {
 	overflow-y: auto;
 	padding: 4px;
 }
+/* Miller columns: every row is exactly one line — the text ellipsizes (drilling in
+   shows the children anyway), so grips, checkboxes and chips always line up. */
 .tt-col-item {
 	padding: 4px 6px;
 	border-radius: var(--radius-s);
 	cursor: pointer;
+	min-width: 0;
+	overflow: hidden;
+}
+.tt-col-item .tt-node-text {
+	flex: 1 1 auto;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.tt-col-item .tt-node-meta {
+	flex: 0 0 auto;
 }
 .tt-col-item:hover {
 	background: var(--background-modifier-hover);

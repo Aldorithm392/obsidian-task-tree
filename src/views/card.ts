@@ -3,6 +3,17 @@ import type { ColumnDef, Role, TaskNode } from "../model/types.ts";
 import type { EdgeGraph } from "../model/insights.ts";
 import { columnForRole, columnForStatus } from "../columns.ts";
 
+/**
+ * A task's title as the human should see it: the trailing link to its OWN note is
+ * hidden (the file keeps it — it's the agent-facing edge), unless the user opted to
+ * show it. A task whose text is only the link falls back to the note name.
+ */
+export function taskDisplayText(node: TaskNode, showNoteLink = false): string {
+	if (showNoteLink || !node.ownNoteLink) return node.text;
+	const stripped = node.text.replace(/\s*\[\[[^\]]+\]\]\s*$/, "").trim();
+	return stripped || node.ownNoteLink;
+}
+
 /** What a node's dependency badge needs to know, extracted from the board's edge graph. */
 export function dependencyInfo(
 	node: TaskNode,
@@ -14,8 +25,9 @@ export function dependencyInfo(
 	return { held, unresolved: graph.unresolved.get(node.id) ?? [], onCycle: graph.cycleIds.has(node.id) };
 }
 
-/** Anything that justifies a full Markdown pass; plain text takes the cheap path. */
-const MD_SYNTAX = /[[\]*_`~=#]|https?:\/\//;
+/** Anything that justifies a full Markdown pass; plain text takes the cheap path.
+ * Deliberately no lone `=` / `~` — "task = note" is prose, only `==`/`~~` are syntax. */
+const MD_SYNTAX = /[[\]*_`#]|==|~~|https?:\/\//;
 
 /**
  * Render a task's text into `parent`: plain span when there is no Markdown in it
@@ -114,7 +126,7 @@ export function createDependencyBadge(
 	const problems: string[] = [];
 	if (deps.held.length > 0) {
 		b.addClass("tt-dep-held");
-		problems.push(`Waiting on: ${deps.held.map((d) => d.text || d.id).join(", ")}`);
+		problems.push(`Waiting on: ${deps.held.map((d) => taskDisplayText(d) || d.id).join(", ")}`);
 	}
 	if (deps.unresolved.length > 0) {
 		b.addClass("tt-dep-warn");

@@ -55,7 +55,7 @@ src/
   views/
     base-view.ts       TaskTreeView base + VIEW_TYPE_* (kanban/tree/dashboard); dashboard header + blockers panel
     kanban-view.ts     columns from model; SortableJS per column = Operation B; CRUD menu
-    tree-view.ts       3 layouts (list/diagram/columns), collapse/focus, full-focus, checkbox cycle, reparent = Operation A
+    tree-view.ts       3 layouts (list/diagram/columns), collapse/focus, full-focus, checkbox toggle (opt-in column cycle), reparent = Operation A
     dashboard-view.ts  extends TreeView: full header + blockers panel + tree
     card.ts            shared chip / progress / override-badge DOM
     modals.ts          promptText() / confirmModal()

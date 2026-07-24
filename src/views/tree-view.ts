@@ -26,7 +26,9 @@ import {
 	dependencyInfo,
 	placementColumn,
 	renderTaskText,
+	taskDisplayText,
 } from "./card.ts";
+import { canonicalStatusForRole } from "../columns.ts";
 import { confirmModal, promptText } from "./modals.ts";
 
 interface RowOptions {
@@ -224,6 +226,7 @@ export class TreeView extends TaskTreeView {
 		if (node.isTask) {
 			const box = host.createEl("input", { type: "checkbox", cls: "tt-checkbox" });
 			box.checked = node.effectiveRole === "done";
+			box.indeterminate = node.effectiveRole === "doing"; // native "in progress" dash
 			this.registerDomEvent(box, "click", (e) => {
 				e.preventDefault();
 				e.stopPropagation();
@@ -231,7 +234,14 @@ export class TreeView extends TaskTreeView {
 			});
 		}
 
-		const text = renderTaskText(this.app, this, host, "tt-node-text", node.text, model.file.path);
+		const text = renderTaskText(
+			this.app,
+			this,
+			host,
+			"tt-node-text",
+			taskDisplayText(node, this.plugin.settings.showTaskNoteLink),
+			model.file.path,
+		);
 		if (node.effectiveRole === "done") text.addClass("tt-done");
 		this.registerDomEvent(text, opts.editTrigger, (e) => {
 			if ((e.target as HTMLElement).closest("a")) return; // links navigate; they don't start an edit
@@ -259,6 +269,7 @@ export class TreeView extends TaskTreeView {
 		}
 
 		const noteBtn = meta.createSpan({ cls: "tt-row-btn tt-note-btn", attr: { "aria-label": "Open / create the task's note" } });
+		if (node.ownNoteLink) noteBtn.addClass("has-note"); // stays faintly visible: this task has a note
 		setIcon(noteBtn, "file-text");
 		this.registerDomEvent(noteBtn, "click", (e) => {
 			e.stopPropagation();
@@ -300,7 +311,7 @@ export class TreeView extends TaskTreeView {
 		li.dataset.line = String(node.line);
 		li.dataset.subtreeEnd = String(node.lastDescLine);
 		li.dataset.depth = String(node.depth);
-		li.setAttribute("data-task", node.statusChar);
+		li.setAttribute("data-status", node.statusChar); // not `data-task`: Obsidian core styles that attr
 
 		const row = li.createDiv({ cls: "tt-row" });
 		this.buildRowContent(row, node, model, {
@@ -471,7 +482,7 @@ export class TreeView extends TaskTreeView {
 		dnode.dataset.subtreeEnd = String(node.lastDescLine);
 		dnode.dataset.depth = String(node.depth);
 		const box = dnode.createDiv({ cls: "tt-dbox" });
-		box.setAttribute("data-task", node.statusChar);
+		box.setAttribute("data-status", node.statusChar); // not `data-task`: Obsidian core styles that attr
 		this.buildRowContent(box, node, model, {
 			toggle: "collapse",
 			editTrigger: "click",
@@ -550,7 +561,7 @@ export class TreeView extends TaskTreeView {
 			item.dataset.id = node.id;
 			item.dataset.line = String(node.line);
 			item.dataset.subtreeEnd = String(node.lastDescLine);
-			item.setAttribute("data-task", node.statusChar);
+			item.setAttribute("data-status", node.statusChar); // not `data-task`: Obsidian core styles that attr
 			if (node.id === selectedId) item.addClass("is-selected");
 			this.buildRowContent(item, node, model, {
 				toggle: "drill",
@@ -592,7 +603,7 @@ export class TreeView extends TaskTreeView {
 
 	private renderFocusHeader(container: HTMLElement, node: TaskNode, model: BoardModel): void {
 		const head = container.createDiv({ cls: "tt-fullfocus-header" });
-		head.createEl("h2", { cls: "tt-fullfocus-title", text: node.text || "(untitled)" });
+		head.createEl("h2", { cls: "tt-fullfocus-title", text: taskDisplayText(node) || "(untitled)" });
 		const meta = head.createDiv({ cls: "tt-node-meta" });
 		createStatusChip(meta, node, model.columns);
 		createProgressBadge(meta, node);
@@ -627,7 +638,7 @@ export class TreeView extends TaskTreeView {
 			this.registerDomEvent(crumb, "click", () => this.setFocus(anc.id));
 		}
 		bar.createSpan({ cls: "tt-focus-sep", text: "›" });
-		bar.createSpan({ cls: "tt-focus-current", text: node.text || "…" });
+		bar.createSpan({ cls: "tt-focus-current", text: taskDisplayText(node) || "…" });
 	}
 
 	// ---- interactions --------------------------------------------------------
@@ -641,6 +652,14 @@ export class TreeView extends TaskTreeView {
 
 	private cycle(node: TaskNode, model: BoardModel): Promise<void> {
 		if (node.isLeaf) {
+			// Default: a checkbox is a checkbox — one click toggles done. Stepping through
+			// every column (todo → doing → done → …) is Kanban semantics, opt-in via the
+			// "checkbox steps through every column" setting; states remain reachable from
+			// the Kanban board and the context menu either way.
+			if (!this.plugin.settings.checkboxCycles) {
+				const role = node.effectiveRole === "done" ? "todo" : "done";
+				return writeStatus(this.plugin, model.file, node.line, canonicalStatusForRole(role, model.columns));
+			}
 			const cur = placementColumn(node, model.columns);
 			const idx = cur ? model.columns.findIndex((c) => c.id === cur.id) : -1;
 			const next = model.columns[(idx + 1) % model.columns.length];
@@ -950,8 +969,9 @@ export class TreeView extends TaskTreeView {
 	}
 
 	private async renamePrompt(node: TaskNode, model: BoardModel): Promise<void> {
-		const name = await promptText(this.app, { title: "Rename task", initial: node.text, cta: "Rename" });
-		if (name) await renameTask(this.plugin, model.file, node, name);
+		const { base, suffix } = this.editableParts(node);
+		const name = await promptText(this.app, { title: "Rename task", initial: base, cta: "Rename" });
+		if (name && name !== base) await renameTask(this.plugin, model.file, node, name + suffix);
 	}
 
 	private async tagPrompt(node: TaskNode, model: BoardModel): Promise<void> {
@@ -964,7 +984,7 @@ export class TreeView extends TaskTreeView {
 			node.children.length > 0
 				? await confirmModal(this.app, {
 						title: "Delete task and its subtasks?",
-						body: `"${node.text}" and everything under it will be removed.`,
+						body: `"${taskDisplayText(node)}" and everything under it will be removed.`,
 						cta: "Delete",
 					})
 				: true;

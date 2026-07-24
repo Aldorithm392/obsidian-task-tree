@@ -28,7 +28,7 @@ import {
 	type Insight,
 } from "../model/insights.ts";
 import { flatten } from "../model/parser.ts";
-import { placementColumn } from "./card.ts";
+import { placementColumn, taskDisplayText } from "./card.ts";
 import { pickTask, promptText } from "./modals.ts";
 
 export const VIEW_TYPE_KANBAN = "task-tree-kanban";
@@ -182,6 +182,21 @@ export abstract class TaskTreeView extends ItemView {
 		void leaf.openFile(model.file, { eState: { line } });
 	}
 
+	/**
+	 * A task's text split for editing: the human edits the visible base; the hidden
+	 * own-note [[link]] (when the setting keeps it out of view) is re-appended on save
+	 * so an edit can never silently sever the task from its note.
+	 */
+	protected editableParts(node: TaskNode): { base: string; suffix: string } {
+		if (this.plugin.settings.showTaskNoteLink || !node.ownNoteLink) {
+			return { base: node.text, suffix: "" };
+		}
+		return {
+			base: node.text.replace(/\s*\[\[[^\]]+\]\]\s*$/, "").trim(),
+			suffix: ` [[${node.ownNoteLink}]]`,
+		};
+	}
+
 	/** Edit a task's text in place: swap the text span for an input; Enter/blur saves, Esc cancels. */
 	protected startInlineEdit(textEl: HTMLElement, node: TaskNode, model: BoardModel): void {
 		if (this.editing) return;
@@ -189,9 +204,10 @@ export abstract class TaskTreeView extends ItemView {
 		if (!parent) return;
 		this.editing = true;
 
+		const { base, suffix } = this.editableParts(node);
 		const input = parent.createEl("input", { cls: "tt-inline-input" });
 		input.type = "text";
-		input.value = node.text;
+		input.value = base;
 		parent.insertBefore(input, textEl);
 		textEl.remove();
 		input.focus();
@@ -204,8 +220,8 @@ export abstract class TaskTreeView extends ItemView {
 			this.editing = false;
 			if (commit) {
 				const value = input.value.trim();
-				if (value.length > 0 && value !== node.text) {
-					void renameTask(this.plugin, model.file, node, value);
+				if (value.length > 0 && value !== base) {
+					void renameTask(this.plugin, model.file, node, value + suffix);
 					return; // the write triggers a fresh re-render
 				}
 			}
@@ -249,7 +265,7 @@ export abstract class TaskTreeView extends ItemView {
 		}
 		const choices = candidates.map((t) => ({
 			node: t,
-			label: `${node.blockedBy.includes(t.id) ? "✓ " : ""}${t.text || t.id}`,
+			label: `${node.blockedBy.includes(t.id) ? "✓ " : ""}${taskDisplayText(t) || t.id}`,
 		}));
 		pickTask(this.app, "Pick the task this one waits on (pick again to remove)", choices, (target) => {
 			const has = node.blockedBy.includes(target.id);
@@ -349,9 +365,9 @@ export abstract class TaskTreeView extends ItemView {
 			const rowEl = sec.createDiv({ cls: "tt-panel-item" });
 			rowEl.setAttribute("data-role", it.node.effectiveRole);
 			if (it.path.length > 0) {
-				rowEl.createSpan({ cls: "tt-breadcrumb", text: it.path.map((n) => n.text || "…").join(" › ") });
+				rowEl.createSpan({ cls: "tt-breadcrumb", text: it.path.map((n) => taskDisplayText(n) || "…").join(" › ") });
 			}
-			rowEl.createSpan({ cls: "tt-panel-item-text", text: it.node.text || "(untitled)" });
+			rowEl.createSpan({ cls: "tt-panel-item-text", text: taskDisplayText(it.node) || "(untitled)" });
 			this.registerDomEvent(rowEl, "click", () => this.openAtLine(model, it.node.line));
 		}
 	}

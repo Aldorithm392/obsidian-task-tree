@@ -23,6 +23,10 @@ export interface TaskTreeSettings {
 	newBoardFolder: string;
 	/** Keep a task-note's parent/depth/path frontmatter in sync when the task is moved. */
 	updateTaskNoteFrontmatter: boolean;
+	/** Show a task's own [[note]] link on the task line in the views (the file always keeps it). */
+	showTaskNoteLink: boolean;
+	/** Checkbox click steps through every column (todo → doing → done → …) instead of toggling done. */
+	checkboxCycles: boolean;
 }
 
 export const DEFAULT_SETTINGS: TaskTreeSettings = {
@@ -41,6 +45,8 @@ export const DEFAULT_SETTINGS: TaskTreeSettings = {
 	taskNoteFolder: "",
 	newBoardFolder: "",
 	updateTaskNoteFrontmatter: true,
+	showTaskNoteLink: false,
+	checkboxCycles: false,
 };
 
 /** The indentation unit used when the plugin writes moved or new lines. */
@@ -106,6 +112,18 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
+
+		new Setting(containerEl)
+			.setName("Checkbox steps through every column")
+			.setDesc(
+				"When on, clicking a task's checkbox cycles To Do → Doing → Done → … When off (default), one click simply toggles Done — other states stay reachable from the Kanban board and the right-click menu.",
+			)
+			.addToggle((t) =>
+				t.setValue(this.plugin.settings.checkboxCycles).onChange(async (v) => {
+					this.plugin.settings.checkboxCycles = v;
+					await this.plugin.saveSettings();
+				}),
+			);
 
 		new Setting(containerEl)
 			.setName("Show the stats bar")
@@ -202,6 +220,18 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 						this.plugin.settings.taskNoteFolder = v.replace(/^\/+|\/+$/g, "").trim();
 						await this.plugin.saveSettings();
 					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Show the note link on the task line")
+			.setDesc(
+				"When off (default), a task's own [[note]] link is hidden in the views so the title doesn't appear twice — the Markdown file always keeps the link, and the note stays reachable from the file icon and the right-click menu.",
+			)
+			.addToggle((t) =>
+				t.setValue(this.plugin.settings.showTaskNoteLink).onChange(async (v) => {
+					this.plugin.settings.showTaskNoteLink = v;
+					await this.plugin.saveSettings();
+				}),
 			);
 
 		new Setting(containerEl)

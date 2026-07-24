@@ -63,6 +63,14 @@ export async function loadBoard(plugin: TaskTreePlugin, file: TFile): Promise<Bo
 	markBlockedPaths(roots);
 	const graph = resolveEdges(roots);
 
+	// Resolve each task's OWN note (the trailing [[link]], verified against the linked
+	// file's `type: task-note` frontmatter) so views can de-duplicate the visible title.
+	for (const n of flatten(roots)) {
+		if (!n.isTask) continue;
+		const link = lastWikilink(n.text);
+		if (link && resolveTaskNote(plugin, file.path, n)) n.ownNoteLink = link;
+	}
+
 	// One indentation level = the whitespace a child adds on top of its PARENT's indent
 	// (not a child's full leading whitespace — a root could itself be indented). Detected
 	// so moves/inserts match the file's own style (tabs vs N spaces), not the global setting.
