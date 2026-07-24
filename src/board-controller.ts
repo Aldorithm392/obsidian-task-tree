@@ -1,4 +1,4 @@
-import { TFile } from "obsidian";
+import { Notice, TFile, normalizePath, type App } from "obsidian";
 import type TaskTreePlugin from "./main.ts";
 import type { ColumnDef, RollupOptions, TaskNode } from "./model/types.ts";
 import { buildTree, flatten } from "./model/parser.ts";
@@ -192,10 +192,43 @@ export async function addTagTask(
 	await touch(plugin, file);
 }
 
+/**
+ * First `<base>.md` in `folder` that doesn't collide with an existing file — suffixing
+ * " 2", " 3", … until free. `keep` (a full path) never counts as a collision, so a file
+ * being renamed can keep its own name.
+ */
+function uniquePath(app: App, folder: string, base: string, keep?: string): { name: string; path: string } {
+	let name = base;
+	let path = normalizePath(folder ? `${folder}/${name}.md` : `${name}.md`);
+	let n = 2;
+	while (path !== keep && app.vault.getAbstractFileByPath(path)) {
+		name = `${base} ${n++}`;
+		path = normalizePath(folder ? `${folder}/${name}.md` : `${name}.md`);
+	}
+	return { name, path };
+}
+
+/**
+ * YAML `title` = note title: renaming the board renames the file too, via
+ * `fileManager.renameFile` so every inbound [[link]] is rewritten. The title write
+ * always lands; a failed file rename reports and leaves the note where it was.
+ */
 export async function renameBoard(plugin: TaskTreePlugin, file: TFile, title: string): Promise<void> {
 	await plugin.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
 		fm["title"] = title;
 	});
+
+	const base = sanitizeFileName(cleanTitle(title));
+	if (!base || base === file.basename) return; // unnameable or already matching — title-only rename
+
+	const parentPath = file.parent?.path ?? "";
+	const folder = parentPath === "/" ? "" : parentPath; // rename ≠ move: stay in the file's folder
+	const { path } = uniquePath(plugin.app, folder, base, file.path);
+	try {
+		await plugin.app.fileManager.renameFile(file, path);
+	} catch (e) {
+		new Notice(`Task Tree: could not rename the board file (${e instanceof Error ? e.message : e})`);
+	}
 }
 
 /** Body of a brand-new board: managed frontmatter + a couple of starter tasks to show the shape. */
@@ -222,13 +255,7 @@ export async function createBoardFile(plugin: TaskTreePlugin, title: string, fol
 	const base = sanitizeFileName(cleanTitle(title)) || "Untitled board";
 	const dir = folder.trim().replace(/^\/+|\/+$/g, "");
 
-	let name = base;
-	let path = dir ? `${dir}/${name}.md` : `${name}.md`;
-	let n = 2;
-	while (app.vault.getAbstractFileByPath(path)) {
-		name = `${base} ${n++}`;
-		path = dir ? `${dir}/${name}.md` : `${name}.md`;
-	}
+	const { path } = uniquePath(app, dir, base);
 
 	if (dir && !app.vault.getAbstractFileByPath(dir)) {
 		try {
@@ -317,13 +344,7 @@ export async function openOrCreateTaskNote(
 	const folder = plugin.settings.taskNoteFolder.trim() || boardFolder;
 	const base = sanitizeFileName(cleanTitle(node.text)) || node.id;
 
-	let name = base;
-	let path = folder ? `${folder}/${name}.md` : `${name}.md`;
-	let n = 2;
-	while (app.vault.getAbstractFileByPath(path)) {
-		name = `${base} ${n++}`;
-		path = folder ? `${folder}/${name}.md` : `${name}.md`;
-	}
+	const { name, path } = uniquePath(app, folder, base);
 
 	if (folder && !app.vault.getAbstractFileByPath(folder)) {
 		try {
