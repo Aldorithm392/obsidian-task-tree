@@ -17,3 +17,6 @@ main.js
 
 # plugin runtime data
 data.json
+
+# hot-reload dev marker
+.hotreload
