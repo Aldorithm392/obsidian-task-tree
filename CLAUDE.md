@@ -3,6 +3,10 @@
 Read this first. It's the project's working memory: what this is, how it's built, and the conventions
 to keep. Keep it focused and current.
 
+> This file is for **developing the plugin**. To *operate a user's boards* as an agent, read
+> [AGENTS.md](AGENTS.md) (the operating contract) and
+> [docs/agent/CONTRACT.md](docs/agent/CONTRACT.md) (machine-readable grammar, conformance-tested).
+
 ## What this is
 
 **Task Tree** is an Obsidian community plugin that renders nested Markdown checklist tasks as **both a

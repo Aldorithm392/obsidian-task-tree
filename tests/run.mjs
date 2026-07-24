@@ -2,6 +2,7 @@
 // stripping (Node >= 23.6) with zero dependencies:  `node tests/run.mjs`.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { parseLine } from "../src/model/line.ts";
 import { buildTree } from "../src/model/parser.ts";
 import { computeRollup } from "../src/model/rollup.ts";
@@ -574,6 +575,50 @@ test("dependencies never leak into roll-up", () => {
 	resolveEdges(roots);
 	// Child is checkbox-done; its unresolved dependency does NOT drag the parent.
 	assert.equal(roots[0].effectiveRole, "done");
+});
+
+// ---- contract conformance ----------------------------------------------------
+// docs/agent/CONTRACT.md publishes the grammar for agents. These tests parse the
+// document's own examples with the real parser — docs that lie to an agent are
+// worse than no docs, so drift fails the suite.
+console.log("contract conformance");
+const contractDoc = readFileSync(new URL("../docs/agent/CONTRACT.md", import.meta.url), "utf8");
+test("CONTRACT.md states the canonical task-line grammar", () => {
+	assert.ok(
+		contractDoc.includes(
+			"<indent><marker> [<status>] <text> [tt-override:: <role>]? [tt-blocked-by:: <id>, <id>…]? ^<id>?",
+		),
+	);
+});
+test("every conformance example in CONTRACT.md parses as annotated", () => {
+	const section = contractDoc.split("## Conformance examples")[1] ?? "";
+	const examples = [...section.matchAll(/```markdown\n([^\n]+)\n```/g)].map((m) => m[1]);
+	assert.equal(examples.length, 4, "expected 4 conformance examples in CONTRACT.md");
+	const expected = {
+		"t-1": { status: " ", text: "Hello world" },
+		"t-2": { status: "x", text: "Ship it", override: "done", indent: "\t" },
+		"t-3": { status: " ", text: "Announce", blockedBy: ["t-qa", "t-copy"] },
+		"t-4": { status: "/", text: "Both", override: "blocked", blockedBy: ["t-a"] },
+	};
+	const seen = new Set();
+	for (const line of examples) {
+		const p = parseLine(line);
+		const exp = expected[p.blockId];
+		assert.ok(exp, `no expectation for the example with id "${p.blockId}"`);
+		seen.add(p.blockId);
+		assert.equal(p.isTask, true);
+		assert.equal(p.statusChar, exp.status);
+		assert.equal(p.text, exp.text);
+		assert.equal(p.override, exp.override);
+		if (exp.blockedBy) assert.deepEqual(p.blockedBy, exp.blockedBy);
+		else assert.equal(p.blockedBy, undefined);
+		if (exp.indent) assert.equal(p.indentText, exp.indent);
+	}
+	assert.equal(seen.size, 4);
+});
+test("the skill's bundled contract is byte-identical to docs/agent/CONTRACT.md", () => {
+	const bundled = readFileSync(new URL("../skills/task-tree/reference/contract.md", import.meta.url), "utf8");
+	assert.equal(bundled, contractDoc);
 });
 
 // ---- summary -----------------------------------------------------------------
