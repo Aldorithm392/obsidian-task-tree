@@ -12,6 +12,7 @@ tags: [qa, ux]
 	- [x] Diagram parent boxes — width max-content + the child column no longer squeezes parents into slivers
 	- [x] Generated notes — no body H1 (Obsidian's inline title was showing every title twice)
 	- [x] Earlier round: checkbox one-click Done toggle; own-note link hidden (no duplicate titles); data-status rename (Obsidian core CSS repainted our checkboxes); true Miller columns
+	- [x] Moving a board broke DEFERRED background views ("No board open") — Obsidian doesn't instantiate background tabs, so their rename listener never ran; a plugin-level vault rename listener now patches every leaf's state, live or deferred
 - [ ] Open — attack next
 	- [ ] Verify Escape cancels inline edit with a physical keyboard — synthetic ESC may have been eaten by AutoHotkey/PowerToys during testing; if genuinely broken, bind Esc at capture phase too
 	- [ ] Diagram spacing: large vertical gaps between sibling groups when their subtree heights differ — consider tighter packing
@@ -20,6 +21,9 @@ tags: [qa, ux]
 	- [ ] Inline-edit input still stretches full-width in diagram/columns layouts (list is capped) — size to content or cap
 	- [ ] Keyboard-only path: no way to add/navigate/edit tasks without the mouse — a "add task to active board" command + arrow-row navigation would close it
 	- [ ] Starter tasks and note headings are English-only — consider locale-aware or neutral templates
+	- [ ] Task pickers ("Blocked by…", board picker) are accent-sensitive — "dia" does not find "día"; normalize diacritics before fuzzy matching
+	- [ ] Task-note frontmatter goes stale when an AGENT restructures the board externally (only plugin-driven moves resync) — add a "Resync all task-note frontmatter" command
+	- [ ] Verified: moving task-notes and boards across folders keeps everything resolving (links, note round-trip, write-back) — covered by basename resolution + the new leaf-state patch
 - [ ] Parked ideas (polish)
 	- [ ] Soft cluster background per top-level branch in the diagram for scanability
 	- [ ] WIP-limit breach could pulse the column header subtly, not just tint the count

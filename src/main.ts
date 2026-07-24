@@ -34,6 +34,27 @@ export default class TaskTreePlugin extends Plugin {
 			}),
 		);
 
+		// Keep every Task Tree leaf bound when its board file is moved or renamed.
+		// The view instances handle this themselves, but Obsidian DEFERS background
+		// tabs (the view never instantiates), so their serialized state would keep
+		// pointing at the old path and come back as "No board open". Patching the
+		// leaf state at the plugin level covers deferred and live leaves alike.
+		this.registerEvent(
+			this.app.vault.on("rename", (file, oldPath) => {
+				if (!(file instanceof TFile)) return;
+				for (const type of [VIEW_TYPE_KANBAN, VIEW_TYPE_TREE, VIEW_TYPE_DASHBOARD]) {
+					for (const leaf of this.app.workspace.getLeavesOfType(type)) {
+						const vs = leaf.getViewState();
+						const state = vs.state;
+						if (state && state["file"] === oldPath) {
+							state["file"] = file.path;
+							void leaf.setViewState(vs);
+						}
+					}
+				}
+			}),
+		);
+
 		this.addRibbonIcon("list-tree", "Open Task Tree", () => {
 			void this.openForActive(VIEW_TYPE_TREE);
 		});
