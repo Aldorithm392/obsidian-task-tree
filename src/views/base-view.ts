@@ -517,8 +517,18 @@ export abstract class TaskTreeView extends ItemView {
 	}
 
 	async convertToBoard(file: TFile): Promise<void> {
+		// A note that already declares a different `type:` is not ours to reclassify. The
+		// old guard silently did nothing here, so the button appeared to do nothing at all.
+		const existingType: unknown = this.app.metadataCache.getFileCache(file)?.frontmatter?.["type"];
+		if (typeof existingType === "string" && existingType !== MANAGED_TYPE) {
+			new Notice(
+				`"${file.basename}" already declares type: ${existingType}. Task Tree won't change it — remove or edit that key first.`,
+				8000,
+			);
+			return;
+		}
 		await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
-			if (!fm["type"]) fm["type"] = MANAGED_TYPE;
+			fm["type"] = MANAGED_TYPE;
 			if (!fm["title"]) fm["title"] = file.basename;
 		});
 		await this.bind(file.path);

@@ -20,8 +20,14 @@ import {
 	setBlockedByInText,
 	clearBlockedByInText,
 } from "../src/model/writer.ts";
-import { DEFAULT_COLUMNS, validateColumns } from "../src/columns.ts";
-import { columnsFromFrontmatter } from "../src/model/okf.ts";
+import { DEFAULT_COLUMNS, validateColumns, roleForStatus, canonicalStatusForRole } from "../src/columns.ts";
+import {
+	columnsFromFrontmatter,
+	buildIndexMd,
+	appendLogEntry,
+	isOwnedBundle,
+	BUNDLE_MARKER,
+} from "../src/model/okf.ts";
 import { expectedNoteFields, noteFieldsDrift } from "../src/model/notemeta.ts";
 import { generateId } from "../src/model/ids.ts";
 import {
@@ -859,6 +865,107 @@ test("note sections split on commas or newlines and tolerate a written-out headi
 test("note sections render as headings with a blank line to write under", () => {
 	assert.deepEqual(renderNoteSections("Avance, Notas"), ["## Avance", "", "## Notas", ""]);
 	assert.deepEqual(renderNoteSections(""), []);
+});
+
+// ---- the published role table, against the SHIPPED defaults -------------------
+// These run against DEFAULT_COLUMNS on purpose. Every other role test in this file uses
+// the five-role COLS fixture above — a configuration no user ships with — which is
+// exactly why the plugin shipped unable to read back characters it writes itself.
+console.log("published roles vs shipped defaults");
+test("every role round-trips through the DEFAULT column set", () => {
+	for (const role of ["todo", "doing", "done", "cancelled", "blocked"]) {
+		const ch = canonicalStatusForRole(role, DEFAULT_COLUMNS);
+		assert.equal(
+			roleForStatus(ch, DEFAULT_COLUMNS, "doing"),
+			role,
+			`wrote '${ch}' for ${role} and read it back as something else`,
+		);
+	}
+});
+test("the characters the agent contract publishes are honoured by the defaults", () => {
+	assert.equal(roleForStatus("-", DEFAULT_COLUMNS, "doing"), "cancelled");
+	assert.equal(roleForStatus("!", DEFAULT_COLUMNS, "doing"), "blocked");
+});
+test("a genuinely unknown character still falls back to unknownRole", () => {
+	assert.equal(roleForStatus("?", DEFAULT_COLUMNS, "doing"), "doing");
+	assert.equal(roleForStatus("~", DEFAULT_COLUMNS, "todo"), "todo");
+});
+test("a board's own columns still win over the published table", () => {
+	const remapped = [
+		{ id: "todo", name: "To Do", status: " ", role: "todo" },
+		{ id: "wip", name: "WIP", status: "-", role: "doing" }, // claims '-' for doing
+		{ id: "done", name: "Done", status: "x", role: "done" },
+	];
+	assert.equal(roleForStatus("-", remapped, "todo"), "doing");
+});
+test("a cancelled child no longer blocks its milestone under the shipped defaults", () => {
+	// This is the shipped bug: '-' read as doing kept the parent forever incomplete.
+	const roots = parse(["- [ ] Infrastructure", "\t- [x] Domain", "\t- [-] Dropped idea"], DEFAULT_COLUMNS);
+	assert.equal(roots[0].effectiveRole, "done");
+	assert.deepEqual(roots[0].progress, { done: 1, total: 1 });
+});
+
+// ---- bundle files the plugin does not own ------------------------------------
+console.log("bundle ownership");
+test("a user's own index.md is never rewritable", () => {
+	// `index.md` at the vault root is one of the most common MOC filenames in Obsidian,
+	// and the index command rewrites wholesale — this guard is what stops it destroying one.
+	assert.equal(isOwnedBundle("# My Map of Content\n\n- [[Projects]]\n- [[Areas]]\n"), false);
+	assert.equal(isOwnedBundle("Some notes I typed."), false);
+});
+test("our own generated bundles are rewritable, and so is an empty file", () => {
+	assert.equal(isOwnedBundle(buildIndexMd([{ path: "a.md", title: "A" }])), true);
+	assert.equal(isOwnedBundle(appendLogEntry("", "2026-07-29", "first")), true);
+	assert.equal(isOwnedBundle(""), true);
+	assert.equal(isOwnedBundle("   \n  "), true);
+});
+test("generated bundles carry the ownership marker", () => {
+	assert.ok(buildIndexMd([]).includes(BUNDLE_MARKER));
+	assert.ok(appendLogEntry("", "2026-07-29", "x").includes(BUNDLE_MARKER));
+});
+test("appending to a log preserves what was already there", () => {
+	const existing = appendLogEntry("", "2026-07-01", "older entry");
+	const next = appendLogEntry(existing, "2026-07-29", "newer entry");
+	assert.ok(next.includes("older entry"), "an append must never drop prior entries");
+	assert.ok(next.includes("newer entry"));
+});
+
+// ---- "next up" means NOW -----------------------------------------------------
+console.log("next up");
+test("a dependency-held leaf is not recommended as actionable", () => {
+	const lines = ["- [ ] Staging box ^t-staging", "- [ ] QA pass [tt-blocked-by:: t-staging] ^t-qa"];
+	const roots = parse(lines);
+	resolveEdges(roots); // sets isDependencyBlocked
+	const next = collectNextUp(roots).map((i) => i.node.text);
+	assert.ok(next.includes("Staging box"), "the unblocked leaf should be actionable");
+	assert.ok(!next.includes("QA pass"), "a task the panel calls blocked must not also be 'next up'");
+});
+test("leaves under an explicitly cancelled ancestor are not recommended", () => {
+	const roots = parse(["- [-] Dropped branch [tt-override:: cancelled] ^t-d", "\t- [ ] Buried task", "- [ ] Live task"]);
+	resolveEdges(roots);
+	assert.deepEqual(
+		collectNextUp(roots).map((i) => i.node.text),
+		["Live task"],
+	);
+});
+test("a parent merely TYPED [-] does not silence its children — children win in roll-up", () => {
+	// Roll-up lets children override a parent's own character, so this parent reads todo.
+	// Only an explicit [tt-override:: cancelled] states intent about the branch.
+	const roots = parse(["- [-] Looks dropped", "\t- [ ] Still live", "- [ ] Other"]);
+	resolveEdges(roots);
+	assert.equal(roots[0].effectiveRole, "todo");
+	assert.deepEqual(
+		collectNextUp(roots).map((i) => i.node.text),
+		["Still live", "Other"],
+	);
+});
+test("leaves under an explicitly overridden-done ancestor are not recommended", () => {
+	const roots = parse(["- [x] Infrastructure [tt-override:: done] ^t-i", "\t- [ ] Staging box", "- [ ] Live task"]);
+	resolveEdges(roots);
+	assert.deepEqual(
+		collectNextUp(roots).map((i) => i.node.text),
+		["Live task"],
+	);
 });
 
 // ---- summary -----------------------------------------------------------------

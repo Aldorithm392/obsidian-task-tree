@@ -40,7 +40,10 @@ Parser regexes (from `src/model/line.ts`):
 | `!` | `blocked` | dominates a parent (default; toggleable) |
 
 A board may remap chars↔columns↔roles via `tt_columns` in its frontmatter; **roles** are the stable
-layer. An unmapped char defaults to `doing` (setting: `unknownRole`).
+layer. The characters in the table above always mean what the table says, even on a board whose
+columns don't list them — so `- [-] Dropped` reads as `cancelled` and `- [!] Stuck` as `blocked`
+anywhere. A board's own `tt_columns` still wins for any character it claims. Any *other* unmapped
+char defaults to `doing` (setting: `unknownRole`).
 
 ## Reserved inline fields
 

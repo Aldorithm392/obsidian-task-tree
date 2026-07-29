@@ -349,18 +349,34 @@
 .tt-dnode[data-depth="1"] > .tt-dbox > .tt-node-text {
 	font-weight: 500;
 }
+/* Hover-revealed row actions. `pointer-events: none` while hidden is not cosmetic: one of
+   these is DELETE, and an invisible element with `cursor: pointer` is still a live target.
+   Without it, a stray click in the row's whitespace could delete a task the user never
+   pointed at. */
 .tt-focus-btn,
 .tt-row-btn {
 	display: inline-flex;
 	color: var(--text-faint);
 	cursor: pointer;
 	opacity: 0;
+	pointer-events: none;
 	transition: opacity 80ms ease;
 }
 .tt-node-body:hover .tt-focus-btn,
 .tt-node-body:hover .tt-row-btn,
 .tt-card:hover .tt-row-btn {
 	opacity: 0.75;
+	pointer-events: auto;
+}
+/* Touch has no hover, so hover-gated affordances are unreachable AND — before the rule
+   above — invisibly tappable. On a touch device they are simply always visible; the
+   manifest promises mobile support, so the row has to work without a pointer. */
+@media (hover: none) {
+	.tt-focus-btn,
+	.tt-row-btn {
+		opacity: 0.55;
+		pointer-events: auto;
+	}
 }
 /* A task that HAS a note keeps its file icon faintly visible — the hidden [[link]]
    still announces itself without repeating the title. */

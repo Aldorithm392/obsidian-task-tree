@@ -10,7 +10,11 @@ export const DEFAULT_COLUMNS: ColumnDef[] = [
 	{ id: "done", name: "Done", status: "x", role: "done" },
 ];
 
-/** Fallback status characters used when no column declares a given role. */
+/**
+ * The canonical character per role. This table is not an implementation detail — it is
+ * PUBLISHED in `docs/03_FORMAT_SPEC.md`, in `docs/agent/CONTRACT.md`, and in the skill the
+ * plugin installs into the user's own vault. Both directions must honour it.
+ */
 const ROLE_FALLBACK_STATUS: Record<Role, string> = {
 	todo: " ",
 	doing: "/",
@@ -18,6 +22,11 @@ const ROLE_FALLBACK_STATUS: Record<Role, string> = {
 	cancelled: "-",
 	blocked: "!",
 };
+
+/** The reverse of ROLE_FALLBACK_STATUS, so one table stays the single source of truth. */
+const ROLE_FOR_PUBLISHED_STATUS = new Map<string, Role>(
+	(Object.entries(ROLE_FALLBACK_STATUS) as Array<[Role, string]>).map(([role, ch]) => [ch, role]),
+);
 
 /** "X" and "x" are the same status; normalize before comparing. */
 function norm(ch: string): string {
@@ -35,7 +44,17 @@ export function columnById(id: string, columns: ColumnDef[]): ColumnDef | undefi
 
 export function roleForStatus(ch: string, columns: ColumnDef[], unknownRole: Role): Role {
 	const col = columnForStatus(ch, columns);
-	return col ? col.role : unknownRole;
+	if (col) return col.role;
+	// No column claims this character — but before giving up, honour the PUBLISHED table.
+	// Without this the plugin cannot read back characters it writes itself: the default
+	// column set has no `-` or `!`, yet canonicalStatusForRole emits exactly those for
+	// cancelled and blocked, and the contract installed in the user's vault instructs
+	// agents to write them. Both came back as `doing`, so a cancelled child silently kept
+	// its milestone from ever reaching done. The user's own columns always win; this only
+	// fills the gap they left.
+	const published = ROLE_FOR_PUBLISHED_STATUS.get(norm(ch));
+	if (published) return published;
+	return unknownRole;
 }
 
 /** The canonical status character used to *write* a role (first column with that role). */

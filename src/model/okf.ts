@@ -77,9 +77,21 @@ export interface BundleEntry {
 	description?: string;
 }
 
+/**
+ * Marks a bundle file as one Task Tree generates and may rewrite. `index.md` and `log.md`
+ * are among the most common filenames in an Obsidian vault, so the commands refuse to
+ * touch a file that does not carry this line — the plugin only ever rewrites its own work.
+ */
+export const BUNDLE_MARKER = "<!-- task-tree:bundle -->";
+
+/** Whether an existing bundle file is one the plugin owns and may rewrite. */
+export function isOwnedBundle(existing: string): boolean {
+	return existing.trim().length === 0 || existing.includes(BUNDLE_MARKER);
+}
+
 /** Build an OKF `index.md` (a directory listing; OKF forbids frontmatter here). */
 export function buildIndexMd(entries: BundleEntry[], heading = "Projects"): string {
-	const lines: string[] = [`# ${heading}`, ""];
+	const lines: string[] = [BUNDLE_MARKER, `# ${heading}`, ""];
 	for (const e of entries) {
 		const desc = e.description ? ` - ${e.description}` : "";
 		lines.push(`* [${e.title}](${e.path})${desc}`);
@@ -97,7 +109,7 @@ export function appendLogEntry(existing: string, dateISO: string, entry: string)
 		const idx = trimmed.indexOf(heading) + heading.length;
 		return trimmed.slice(0, idx) + "\n" + bullet + trimmed.slice(idx) + "\n";
 	}
-	const header = trimmed.startsWith("#") ? "" : "# Update Log\n\n";
+	const header = trimmed.startsWith("#") ? "" : `${BUNDLE_MARKER}\n# Update Log\n\n`;
 	const body = trimmed.startsWith("# ")
 		? trimmed.replace(/^(# .*\n)/, `$1\n${heading}\n${bullet}\n`)
 		: `${header}${heading}\n${bullet}\n\n${trimmed}`;

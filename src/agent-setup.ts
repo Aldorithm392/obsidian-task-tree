@@ -10,7 +10,7 @@ import CONTRACT_MD from "../docs/agent/CONTRACT.md";
 import SKILL_MD from "../skills/task-tree/SKILL.md";
 
 /** Bump when the embedded instructions change meaningfully — a bump re-stamps once. */
-const SECTION_VERSION = 2;
+const SECTION_VERSION = 3;
 const BEGIN = `<!-- task-tree:agents:v${SECTION_VERSION}:begin -->`;
 const ANY_BEGIN_RE = /<!-- task-tree:agents:v\d+:begin -->/;
 const END = "<!-- task-tree:agents:end -->";

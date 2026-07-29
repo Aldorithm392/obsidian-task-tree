@@ -4,7 +4,7 @@ import { KanbanView } from "./views/kanban-view.ts";
 import { TreeView } from "./views/tree-view.ts";
 import { DashboardView } from "./views/dashboard-view.ts";
 import { TaskTreeView, VIEW_TYPE_DASHBOARD, VIEW_TYPE_KANBAN, VIEW_TYPE_TREE } from "./views/base-view.ts";
-import { appendLogEntry, buildIndexMd, isManagedFrontmatter, MANAGED_TYPE } from "./model/okf.ts";
+import { appendLogEntry, buildIndexMd, isManagedFrontmatter, isOwnedBundle, MANAGED_TYPE } from "./model/okf.ts";
 import { assignIdsInText } from "./model/writer.ts";
 import { createBoardFile, reconcileBoardNotes } from "./board-controller.ts";
 import { ensureAgentInstructions } from "./agent-setup.ts";
@@ -146,24 +146,29 @@ export default class TaskTreePlugin extends Plugin {
 		// mode === "ask": offer exactly once per session, remember the answer forever.
 		if (this.agentOffered) return;
 		this.agentOffered = true;
-		const ok = await confirmModal(this.app, {
+		const answer = await confirmModal(this.app, {
 			title: "Teach AI tools about your boards?",
 			body:
 				"Task Tree can add agent instructions to this vault (an AGENTS.md section and a Claude Code skill) so AI assistants understand and safely edit your boards — no setup on your side, kept up to date automatically. Your own content is never touched.",
 			cta: "Add",
 			danger: false,
 		});
-		if (ok) {
+		if (answer === "confirm") {
 			this.settings.agentInstructions = "on";
 			await this.saveSettings();
 			this.agentEnsured = true;
 			await ensureAgentInstructions(this);
 			new Notice("Added AGENTS.md and the Claude Code skill to this vault.");
-		} else if (this.settings.agentInstructions === "ask") {
-			// Only a live "ask" turns into "off" — a stale modal (e.g. after a plugin
-			// reload raced a second instance) can never downgrade an accepted "on".
+		} else if (answer === "reject" && this.settings.agentInstructions === "ask") {
+			// Only an explicit Cancel turns into "off". Escape, clicking away, or the modal
+			// being torn down by a re-render is "not now" — it used to be recorded as a
+			// permanent no, with no notice and nothing pointing back to the setting.
+			// A stale modal also can never downgrade an already-accepted "on".
 			this.settings.agentInstructions = "off";
 			await this.saveSettings();
+		} else {
+			// Dismissed: leave the setting on "ask" and let the guard re-offer next session.
+			this.agentOffered = false;
 		}
 	}
 
@@ -206,7 +211,8 @@ export default class TaskTreePlugin extends Plugin {
 			})
 			.sort((a, b) => a.title.localeCompare(b.title));
 		const content = buildIndexMd(entries);
-		await this.writeBundleFile(indexPath, () => content, (d) => (d === content ? d : content));
+		const wrote = await this.writeBundleFile(indexPath, () => content, (d) => (d === content ? d : content));
+		if (!wrote) return; // it declined and already said why — don't claim success
 		new Notice(`Indexed ${entries.length} board${entries.length === 1 ? "" : "s"} in ${indexPath}.`);
 	}
 
@@ -221,20 +227,41 @@ export default class TaskTreePlugin extends Plugin {
 		const dir = this.settings.newBoardFolder;
 		const logPath = normalizePath(dir ? `${dir}/log.md` : "log.md");
 		const date = new Date().toISOString().slice(0, 10);
-		await this.writeBundleFile(logPath, () => appendLogEntry("", date, entry), (d) => appendLogEntry(d, date, entry));
+		const wrote = await this.writeBundleFile(
+			logPath,
+			() => appendLogEntry("", date, entry),
+			(d) => appendLogEntry(d, date, entry),
+		);
+		if (!wrote) return;
 		new Notice(`Logged under ${date} in ${logPath}.`);
 	}
 
-	/** Create (or update, via vault.process) a bundle file, making its folder first if needed. */
+	/**
+	 * Create (or update, via vault.process) a bundle file, making its folder first if needed.
+	 *
+	 * Refuses to touch a file that isn't ours. `index.md` and `log.md` are among the most
+	 * common filenames in an Obsidian vault — and with an empty new-board folder these
+	 * resolve to the VAULT ROOT, where `index.md` is very often the user's own map of
+	 * content. The index command rewrites wholesale, so without this guard running it once
+	 * destroyed that file irrecoverably. Returns false when it declined.
+	 */
 	private async writeBundleFile(
 		path: string,
 		create: () => string,
 		update: (existing: string) => string,
-	): Promise<void> {
+	): Promise<boolean> {
 		const existing = this.app.vault.getAbstractFileByPath(path);
 		if (existing instanceof TFile) {
+			const current = await this.app.vault.cachedRead(existing);
+			if (!isOwnedBundle(current)) {
+				new Notice(
+					`Task Tree: "${path}" already exists and wasn't created by Task Tree, so it was left untouched. Point the new-board folder somewhere else, or delete that file first.`,
+					8000,
+				);
+				return false;
+			}
 			await this.app.vault.process(existing, update);
-			return;
+			return true;
 		}
 		const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
 		if (dir && !this.app.vault.getAbstractFileByPath(dir)) {
@@ -245,6 +272,7 @@ export default class TaskTreePlugin extends Plugin {
 			}
 		}
 		await this.app.vault.create(path, create());
+		return true;
 	}
 
 	private activeMdGuard(checking: boolean, run: () => void): boolean {
@@ -302,15 +330,22 @@ export default class TaskTreePlugin extends Plugin {
 		void workspace.revealLeaf(leaf);
 	}
 
+	/**
+	 * Open the active note in a Task Tree view.
+	 *
+	 * Deliberately does NOT convert. The opt-in gate is the promise that earns a
+	 * Markdown-first user's trust, and this path used to break it on the very first click:
+	 * it wrote `type: task-tree` into whatever note happened to be open, and the first
+	 * render then appended a `^t-xxxxxx` id to every checklist line — two unrequested
+	 * mutations, no question asked, against `docs/00_VISION.md`'s "never surprise the
+	 * human's files silently". The view's own `renderNotManaged` screen already asks
+	 * properly, so we just let it do its job.
+	 */
 	private async openForActive(viewType: string): Promise<void> {
 		const file = this.app.workspace.getActiveFile();
 		if (!file || file.extension !== "md") {
 			new Notice("Open a Markdown note first.");
 			return;
-		}
-		const cache = this.app.metadataCache.getFileCache(file);
-		if (!isManagedFrontmatter(cache?.frontmatter)) {
-			await this.convert(file);
 		}
 		await this.activateView(viewType, file.path);
 	}
@@ -337,12 +372,26 @@ export default class TaskTreePlugin extends Plugin {
 		}
 	}
 
-	private async convert(file: TFile): Promise<void> {
+	/**
+	 * Opt a note in. Returns false when it declined — a note that already declares a
+	 * different `type:` is not ours to reclassify, and the old code silently did nothing
+	 * while announcing success, leaving the view's "Make this a board" button dead.
+	 */
+	private async convert(file: TFile): Promise<boolean> {
+		const existingType: unknown = this.app.metadataCache.getFileCache(file)?.frontmatter?.["type"];
+		if (typeof existingType === "string" && existingType !== MANAGED_TYPE) {
+			new Notice(
+				`"${file.basename}" already declares type: ${existingType}. Task Tree won't change it — remove or edit that key first.`,
+				8000,
+			);
+			return false;
+		}
 		await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
-			if (!fm["type"]) fm["type"] = MANAGED_TYPE;
+			fm["type"] = MANAGED_TYPE;
 			if (!fm["title"]) fm["title"] = file.basename;
 		});
 		new Notice(`"${file.basename}" is now a Task Tree board.`);
+		return true;
 	}
 
 	private async assignIdsCommand(file: TFile): Promise<void> {

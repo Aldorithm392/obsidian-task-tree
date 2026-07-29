@@ -142,17 +142,30 @@ interface ConfirmOptions {
 	danger?: boolean;
 }
 
-/** A yes/no confirm dialog. Resolves true only if the user confirms. */
-export function confirmModal(app: App, opts: ConfirmOptions): Promise<boolean> {
+/**
+ * What the user actually did. "reject" and "dismiss" are NOT the same event: pressing
+ * Escape, clicking outside, or having the modal torn down by a re-render is not a decision,
+ * and a caller that persists a permanent choice must be able to tell them apart. Before
+ * this, dismissing the agent-setup offer silently wrote `agentInstructions: "off"` forever.
+ */
+export type ConfirmAnswer = "confirm" | "reject" | "dismiss";
+
+/** A yes/no confirm dialog that reports how it was closed. */
+export function confirmModal(app: App, opts: ConfirmOptions): Promise<ConfirmAnswer> {
 	return new Promise((resolve) => new ConfirmModal(app, opts, resolve).open());
+}
+
+/** Convenience for the common case where "not now" and "no" mean the same thing. */
+export async function confirmed(app: App, opts: ConfirmOptions): Promise<boolean> {
+	return (await confirmModal(app, opts)) === "confirm";
 }
 
 class ConfirmModal extends Modal {
 	private opts: ConfirmOptions;
-	private resolve: (value: boolean) => void;
-	private answered = false;
+	private resolve: (value: ConfirmAnswer) => void;
+	private answer: ConfirmAnswer | null = null;
 
-	constructor(app: App, opts: ConfirmOptions, resolve: (value: boolean) => void) {
+	constructor(app: App, opts: ConfirmOptions, resolve: (value: ConfirmAnswer) => void) {
 		super(app);
 		this.opts = opts;
 		this.resolve = resolve;
@@ -164,18 +177,22 @@ class ConfirmModal extends Modal {
 		new Setting(this.contentEl)
 			.addButton((b) => {
 				b.setButtonText(this.opts.cta ?? "Delete").onClick(() => {
-					this.answered = true;
-					this.resolve(true);
+					this.answer = "confirm";
 					this.close();
 				});
 				if (this.opts.danger === false) b.setCta();
 				else b.setWarning();
 			})
-			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()));
+			.addButton((b) =>
+				b.setButtonText("Cancel").onClick(() => {
+					this.answer = "reject"; // an explicit no, unlike Escape
+					this.close();
+				}),
+			);
 	}
 
 	override onClose(): void {
 		this.contentEl.empty();
-		if (!this.answered) this.resolve(false);
+		this.resolve(this.answer ?? "dismiss");
 	}
 }

@@ -46,12 +46,29 @@ export function collectBlockers(roots: TaskNode[]): Insight[] {
 	return out;
 }
 
-/** The actionable frontier: leaf tasks you can pick up now (in-progress first, then to-do). */
+/**
+ * The actionable frontier: leaf tasks you can pick up **now** (in-progress first, then to-do).
+ *
+ * "Now" is the whole contract, so three kinds of leaf are excluded even though their own
+ * role says todo/doing — otherwise the panel recommends work the same panel calls stuck:
+ *   • a leaf held by an unfinished `tt-blocked-by` dependency (it also appears under
+ *     "Waiting on dependencies" — listing it in both places is advice contradicting itself);
+ *   • a leaf under an ancestor the human explicitly overrode to `cancelled` (that branch
+ *     was dropped on purpose) or to `done` (that milestone was closed with loose ends,
+ *     deliberately and visibly).
+ *
+ * Only the OVERRIDE counts for the ancestor test, never a rolled-up role: roll-up lets
+ * children win over a parent's own character, so a parent typed `[-]` with one unfinished
+ * child legitimately reads `todo`. The override is the only place a human states intent
+ * about a branch, which is exactly why the format puts it in visible ink.
+ */
 export function collectNextUp(roots: TaskNode[]): Insight[] {
 	const doing: Insight[] = [];
 	const todo: Insight[] = [];
 	walkWithPath(roots, (n, path) => {
 		if (!n.isTask || !n.isLeaf) return;
+		if (n.isDependencyBlocked) return;
+		if (path.some((a) => a.override === "done" || a.override === "cancelled")) return;
 		if (n.effectiveRole === "doing") doing.push({ node: n, path });
 		else if (n.effectiveRole === "todo") todo.push({ node: n, path });
 	});

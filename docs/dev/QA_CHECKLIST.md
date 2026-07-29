@@ -88,6 +88,23 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
   present — every dashed curve must terminate **on a task box**, not in empty space.
 - [ ] Both densities survive a narrow pane without horizontal overflow of the page body.
 
+## Safety (added after the 1.1.1 audit — these are the ones that cost data)
+
+- [ ] With a hand-written `index.md` at the vault root, run "Build the boards index": it must
+  **refuse**, explain why, and leave the file byte-identical. Then delete it, re-run, and confirm
+  the generated one carries the `<!-- task-tree:bundle -->` marker and *is* rewritable.
+- [ ] Ribbon / "Open current file as …" on a note **without** `type: task-tree`: it must show the
+  "not a board yet" screen and write **nothing** — check the file is untouched and no `^ids` appear.
+- [ ] Same, on a note declaring `type: book`: an explanatory notice, no false success, no dead button.
+- [ ] Dismiss the agent-setup modal with **Escape**, restart Obsidian: it should offer again.
+  Dismiss with **Cancel**: it should stay off. (These used to be the same event.)
+- [ ] `- [-] Dropped` inside a milestone: the milestone can reach done, and the row reads
+  Cancelled — on a board with **no** custom columns.
+- [ ] Narrow / touch-emulated pane: the hover buttons are visible and tappable, and in a wide
+  pane a click in the row's empty space never triggers Delete.
+- [ ] Dashboard with a dependency-held leaf: it appears under "Waiting on dependencies" and
+  **not** under "Next up".
+
 ## Regression guard
 
 - [ ] With `examples/projects/website-redesign.md`: perform one move + one rename + one id-assign,

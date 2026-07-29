@@ -32,7 +32,7 @@ import {
 	taskDisplayText,
 } from "./card.ts";
 import { canonicalStatusForRole } from "../columns.ts";
-import { confirmModal, promptText } from "./modals.ts";
+import { confirmed, promptText } from "./modals.ts";
 
 interface RowOptions {
 	toggle: "collapse" | "drill" | "none";
@@ -1315,7 +1315,7 @@ export class TreeView extends TaskTreeView {
 	private async deletePrompt(node: TaskNode, model: BoardModel): Promise<void> {
 		const ok =
 			node.children.length > 0
-				? await confirmModal(this.app, {
+				? await confirmed(this.app, {
 						title: "Delete task and its subtasks?",
 						body: `"${taskDisplayText(node)}" and everything under it will be removed.`,
 						cta: "Delete",

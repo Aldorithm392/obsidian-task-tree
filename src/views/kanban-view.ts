@@ -28,7 +28,7 @@ import {
 	roleIcon,
 	taskDisplayText,
 } from "./card.ts";
-import { confirmModal, promptText } from "./modals.ts";
+import { confirmed, promptText } from "./modals.ts";
 
 export class KanbanView extends TaskTreeView {
 	private byId = new Map<string, TaskNode>();
@@ -260,7 +260,7 @@ export class KanbanView extends TaskTreeView {
 	private async deletePrompt(node: TaskNode, model: BoardModel): Promise<void> {
 		const ok =
 			node.children.length > 0
-				? await confirmModal(this.app, {
+				? await confirmed(this.app, {
 						title: "Delete task and its subtasks?",
 						body: `"${taskDisplayText(node)}" and everything under it will be removed.`,
 						cta: "Delete",
