@@ -94,14 +94,26 @@ migration, a `tt_version` key can be introduced then, opt-in.
   stretching window-wide in the diagram/columns layouts · Escape is also bound at the capture phase
   so a global hotkey layer can't swallow "cancel this edit".
 
+- **Room to breathe (the design pass).** The tree views were built dense and read as a spreadsheet.
+  Spacing now lives in tokens on `.tt-view`: roomier rows and cards, indent guides in the list,
+  diagram nodes as cards floating on a subtle dot-grid canvas, depth-aware type weight so milestones
+  outrank leaves, and a status edge on diagram cards. The old packing survives as the **Compact**
+  density setting. Designed against renders from `tools/visual/`, in light and dark.
+- **A visual harness** (`tools/visual/`, `docs/dev/VISUAL_HARNESS.md`): the views' real DOM + the real
+  stylesheet, screenshotted in headless Chromium. Layout arguments are now settled with measurements.
+  It immediately caught a v1.0 bug — the inverted diagram drew its dependency edges through a
+  mirrored transform using screen coordinates, so every curve pointed at the wrong task.
+
 ## Next (v1.2 — candidates, not commitments)
 
-- **Diagram packing.** Sibling groups with very different subtree heights leave large vertical gaps;
-  needs a real layout pass, measured on screen (open QA item).
-- **Keyboard, part two.** The arrow layer covers the list layout; diagram and columns still need it,
-  and there is no keyboard route to the context-menu actions (move/indent/outdent) yet.
+- **Diagram packing, properly.** Measured (see `docs/dev/VISUAL_HARNESS.md`): canvas height is
+  leaf-bound and completely insensitive to `align-items`, so no CSS tweak will do it. A genuinely
+  tighter tree needs contour-based packing (Reingold–Tilford) with absolute positioning — a real
+  layout engine, worth doing only with the harness to verify it.
 - **Note progress, deeper.** Today the badge counts checklist items. Clicking it could open the note
   at the first unfinished item, and the walk could report *which* note holds the backlog.
+- **Harness as a regression gate.** The renders are deterministic; snapshotting them in CI would
+  catch layout regressions that no unit test can see.
 
 ## Later — through the philosophy's filter
 

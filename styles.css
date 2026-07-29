@@ -1,12 +1,41 @@
 /* Task Tree — all styling lives here (no inline styles except dynamic values),
    built on Obsidian CSS variables so themes and snippets can override it. */
 
+/* ---- spacing tokens ----
+   Every spacing decision in the tree views lives here, so the density switch is one
+   block instead of a hunt through the stylesheet — and so a theme or snippet can
+   retune the whole view by overriding a handful of variables. */
 .tt-view {
+	--tt-connector: 44px; /* horizontal room between one level and the next */
+	--tt-row-gap: 14px; /* vertical air between diagram siblings */
+	--tt-box-pad: 10px 14px;
+	--tt-canvas-pad: 36px 32px 72px;
+	--tt-list-pad: 18px 20px 72px;
+	--tt-row-pad: 7px 10px;
+	--tt-row-gap-x: 10px;
+	--tt-indent: 34px;
+	--tt-guide-offset: 22px; /* where a child list's guide line hangs from */
+	--tt-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.05);
+	--tt-card-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.06), 0 8px 20px rgba(0, 0, 0, 0.09);
+
 	padding: 0;
 	height: 100%;
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
+}
+
+/* The old, dense spacing, kept as an opt-in for people who want maximum on screen. */
+.tt-view.is-compact {
+	--tt-connector: 28px;
+	--tt-row-gap: 8px;
+	--tt-box-pad: 5px 9px;
+	--tt-canvas-pad: 10px 8px 32px;
+	--tt-list-pad: 8px 12px 32px;
+	--tt-row-pad: 3px 6px;
+	--tt-row-gap-x: 6px;
+	--tt-indent: 22px;
+	--tt-guide-offset: 14px;
 }
 .tt-scroll {
 	flex: 1 1 auto;
@@ -191,12 +220,32 @@
 
 /* ---- tree ---- */
 .tt-tree {
-	padding: 8px 12px 32px;
+	padding: var(--tt-list-pad);
+}
+/* A whisper of a dot grid behind the diagram only: enough that the nodes read as
+   objects resting on a canvas, not enough to compete with them. */
+.tt-tree:has(.tt-diagram) {
+	padding: 0;
+	background-image: radial-gradient(
+		circle at 1px 1px,
+		color-mix(in srgb, var(--background-modifier-border) 45%, transparent) 1px,
+		transparent 0
+	);
+	background-size: 26px 26px;
+	background-position: 12px 12px;
 }
 .tt-tree-list {
 	list-style: none;
 	margin: 0;
-	padding-left: 20px;
+	padding-left: var(--tt-indent);
+}
+/* Indent guides: a hairline descending from each parent, so nesting is followed by
+   eye instead of counted in pixels. Offset to sit between the parent's chevron and
+   its checkbox, which is where the branch visually leaves the row. */
+.tt-tree-list:not(.tt-root-list) {
+	margin-left: var(--tt-guide-offset);
+	padding-left: calc(var(--tt-indent) - var(--tt-guide-offset));
+	border-left: 1px solid var(--background-modifier-border);
 }
 .tt-root-list {
 	padding-left: 4px;
@@ -210,9 +259,10 @@
 .tt-row {
 	display: flex;
 	align-items: center;
-	gap: 6px;
-	padding: 3px 4px;
-	border-radius: var(--radius-s);
+	gap: var(--tt-row-gap-x);
+	padding: var(--tt-row-pad);
+	border-radius: var(--radius-m);
+	line-height: 1.5;
 }
 .tt-row:hover {
 	background: var(--background-modifier-hover);
@@ -284,8 +334,20 @@
 .tt-node-meta {
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	gap: 10px;
 	margin-left: auto;
+}
+
+/* ---- natural hierarchy: the trunk reads heavier than the twigs, so scanning a
+   board starts from its milestones instead of from a uniform grey wall. ---- */
+.tt-node[data-depth="0"] > .tt-row > .tt-node-text,
+.tt-dnode[data-depth="0"] > .tt-dbox > .tt-node-text {
+	font-size: var(--font-ui-medium);
+	font-weight: 600;
+}
+.tt-node[data-depth="1"] > .tt-row > .tt-node-text,
+.tt-dnode[data-depth="1"] > .tt-dbox > .tt-node-text {
+	font-weight: 500;
 }
 .tt-focus-btn,
 .tt-row-btn {
@@ -665,8 +727,8 @@ h2.tt-dash-title {
 	position: relative;
 	display: inline-flex;
 	flex-direction: column;
-	gap: 10px;
-	padding: 8px 4px;
+	gap: 18px;
+	padding: var(--tt-canvas-pad);
 }
 /* Dependency overlay: dashed curves over the diagram, visually distinct from the
    solid hierarchy connectors. Pointer-events off so nodes stay interactive. */
@@ -720,15 +782,32 @@ h2.tt-dash-title {
 }
 .tt-dbox {
 	flex: 0 0 auto;
-	padding: 5px 9px;
+	padding: var(--tt-box-pad);
 	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-s);
-	background: var(--background-secondary);
+	/* Status as an edge on the card itself. Transparent by default so the geometry is
+	   identical across roles — nothing shifts sideways when a task changes state.
+	   Deliberately NOT on list rows: there the left edge sits far from the task text,
+	   behind the grip and checkbox, and reads as stray colour rather than as state. */
+	border-left: 3px solid transparent;
+	border-radius: var(--radius-m);
+	background: var(--background-primary);
+	box-shadow: var(--tt-card-shadow);
+	transition: box-shadow 120ms ease, transform 120ms ease;
 	/* Long titles wrap inside a bounded box instead of stretching the whole diagram;
 	   width: max-content stops the flex row from squeezing parents to slivers. */
 	width: max-content;
 	max-width: 480px;
 	white-space: normal;
+}
+.tt-dbox:hover {
+	box-shadow: var(--tt-card-shadow-hover);
+	transform: translateY(-1px);
+}
+.tt-dbox[data-role="doing"] {
+	border-left-color: var(--color-yellow);
+}
+.tt-dbox[data-role="blocked"] {
+	border-left-color: var(--color-red);
 }
 .tt-dbox .tt-node-text {
 	min-width: 0;
@@ -737,7 +816,7 @@ h2.tt-dash-title {
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
-	gap: 8px;
+	gap: var(--tt-row-gap, 8px);
 	padding-left: var(--tt-connector, 28px);
 	position: relative;
 	flex-shrink: 0; /* the child column never squeezes its parent's box */
@@ -780,6 +859,15 @@ h2.tt-dash-title {
 }
 .tt-dchildren > .tt-dnode:only-child::after {
 	display: none;
+}
+/* Connectors read as a hint, not a cage. */
+.tt-dchildren::before,
+.tt-dchildren > .tt-dnode::before,
+.tt-dchildren > .tt-dnode::after {
+	opacity: 0.65;
+}
+.tt-goal-box {
+	padding: 13px 17px;
 }
 
 /* ---- inverted diagram: the goal sits on the right, enablers flow into it ---- */

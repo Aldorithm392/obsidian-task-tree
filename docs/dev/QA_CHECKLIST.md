@@ -65,13 +65,28 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
 - [ ] Link a note to a plain note that is NOT `type: task-note` → its checklists are ignored.
 - [ ] Turn "Show note progress" off → every badge disappears; nothing else changes.
 
-## Keyboard (list layout)
+## Keyboard (all three layouts)
 
-- [ ] Tab once into the tree, then ↑ ↓ walk rows with a visible focus ring (light **and** dark).
+- [ ] Tab once into the tree, then ↑ ↓ walk rows with a visible focus ring (light **and** dark) —
+  check the list **and** the diagram.
 - [ ] → opens a collapsed branch and ← closes an open one, **keeping focus on the same row**;
   ← on a leaf jumps to its parent.
+- [ ] Columns layout: → drills into the next pane and lands on its first item; ← steps back out.
 - [ ] Enter opens the inline editor; Escape cancels it and Enter saves.
 - [ ] Space toggles done without scrolling the pane, and focus stays put after the re-render.
+- [ ] Alt+↑/↓ move the task, Alt+→/← indent and outdent — focus follows the **task**, not the slot.
+- [ ] The menu key (or Shift+F10) opens the context menu anchored at the focused row.
+
+## Density & layout
+
+- [ ] Settings → Density → Compact tightens every layout and Comfortable restores it, with no
+  reload needed (the dashboard updates too).
+- [ ] Diagram: nodes read as cards on the dot-grid canvas; the in-flight card shows a coloured left
+  edge and a blocked one shows red; hovering lifts the card.
+- [ ] List: indent guides descend from each parent; top-level tasks read heavier than their leaves.
+- [ ] **Inverted diagram + dependencies**: turn on the invert toggle with `tt-blocked-by` edges
+  present — every dashed curve must terminate **on a task box**, not in empty space.
+- [ ] Both densities survive a narrow pane without horizontal overflow of the page body.
 
 ## Regression guard
 

@@ -168,9 +168,18 @@ lists the biggest hidden piles first. Depth and on/off are in **Settings → Tas
 
 ### Keyboard
 
-The tree is one tab stop; from there **↑ ↓** walk the visible rows, **← →** fold and unfold,
-**Enter** edits a task in place, and **Space** toggles it done. The **"Add a task to the open
-board"** command takes a hotkey, so capture never needs the mouse.
+Each layout is one tab stop; from there **↑ ↓** walk the rows, **← →** fold and unfold (in the
+Columns layout they drill in and step back out), **Enter** edits a task in place, **Space** toggles
+it done, **Alt + arrows** move / indent / outdent, and the **menu key** opens the context menu right
+where you are. The **"Add a task to the open board"** command takes a hotkey, so capture never needs
+the mouse.
+
+### Room to breathe
+
+The tree is laid out to be read, not just to fit: generous rows, indent guides that let the eye
+follow a branch, milestones set heavier than leaves, and — in the diagram — nodes as cards resting
+on a soft canvas, with a coloured edge on whatever is in flight or blocked. If you would rather see
+more at once, **Settings → Task Tree → Density → Compact** restores the dense packing.
 
 ---
 

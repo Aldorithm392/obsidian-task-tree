@@ -134,6 +134,7 @@ export abstract class TaskTreeView extends ItemView {
 		const sy = prevScroll?.scrollTop ?? 0;
 		c.empty();
 		c.addClass("tt-view");
+		c.toggleClass("is-compact", this.plugin.settings.treeDensity === "compact");
 
 		const file = this.currentFile();
 		if (!file) {

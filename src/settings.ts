@@ -33,6 +33,8 @@ export interface TaskTreeSettings {
 	showNoteProgress: boolean;
 	/** How many note levels the recursive walk follows. 1 = the task's own note only. */
 	noteProgressDepth: number;
+	/** Spacing of the tree views: roomy (default) or the older dense packing. */
+	treeDensity: "comfortable" | "compact";
 	/** Starter tasks written into a brand-new board. One per line; indent to nest. Empty = none. */
 	newBoardStarterTasks: string;
 	/** Section headings written into a new task-note. Comma-separated. Empty = none. */
@@ -60,6 +62,7 @@ export const DEFAULT_SETTINGS: TaskTreeSettings = {
 	agentInstructions: "ask",
 	showNoteProgress: true,
 	noteProgressDepth: 3,
+	treeDensity: "comfortable",
 	// English defaults, because something has to ship — both are settings precisely so a
 	// vault written in another language isn't stuck with them.
 	newBoardStarterTasks: "First task\n\tA subtask\nSecond task",
@@ -141,6 +144,20 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}),
 			);
+
+		new Setting(containerEl)
+			.setName("Density")
+			.setDesc(
+				"Comfortable gives the tree room to breathe — larger rows, indent guides, and the diagram's nodes as cards on a canvas. Compact restores the dense packing if you would rather fit more on screen.",
+			)
+			.addDropdown((d) => {
+				d.addOption("comfortable", "Comfortable");
+				d.addOption("compact", "Compact");
+				d.setValue(this.plugin.settings.treeDensity).onChange(async (v) => {
+					this.plugin.settings.treeDensity = v as "comfortable" | "compact";
+					await this.plugin.saveSettings();
+				});
+			});
 
 		new Setting(containerEl)
 			.setName("Show the stats bar")

@@ -20,3 +20,6 @@ data.json
 
 # hot-reload dev marker
 .hotreload
+
+# visual harness output
+visual-out/

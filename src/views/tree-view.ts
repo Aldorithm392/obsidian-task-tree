@@ -39,6 +39,50 @@ interface RowOptions {
 	editTrigger: "click" | "dblclick";
 }
 
+/** How one layout exposes its focusable rows to the shared keyboard handler. */
+interface KeyboardSpec {
+	/** Selector for the focusable row elements, matched in document order. */
+	rowSelector: string;
+	/** The task id a row belongs to. */
+	idOf: (row: HTMLElement) => string;
+	/** Find the row for a task id inside the rendered container. */
+	rowFor: (container: HTMLElement, id: string) => HTMLElement | null;
+}
+
+interface LocalRect {
+	left: number;
+	top: number;
+	right: number;
+	bottom: number;
+	width: number;
+	height: number;
+}
+
+/**
+ * A box's rect in the canvas's OWN layout coordinates, walked from the offset chain.
+ *
+ * Deliberately NOT getBoundingClientRect: the inverted diagram mirrors the canvas with
+ * `transform: scaleX(-1)`, and the SVG overlay lives *inside* that transform. Screen
+ * coordinates are post-transform, so feeding them back into the overlay drew every
+ * dependency curve horizontally flipped — pointing at the wrong tasks — whenever the
+ * invert toggle was on. Offsets are pre-transform, so one set of maths is right in both
+ * orientations. Returns null if the element isn't laid out (a collapsed branch).
+ */
+function localRect(el: HTMLElement, canvas: HTMLElement): LocalRect | null {
+	let x = 0;
+	let y = 0;
+	let e: HTMLElement | null = el;
+	while (e && e !== canvas) {
+		x += e.offsetLeft;
+		y += e.offsetTop;
+		e = e.offsetParent as HTMLElement | null;
+	}
+	if (e !== canvas) return null; // never reached the canvas — not rendered
+	const width = el.offsetWidth;
+	const height = el.offsetHeight;
+	return { left: x, top: y, right: x + width, bottom: y + height, width, height };
+}
+
 export class TreeView extends TaskTreeView {
 	private collapsed = new Set<string>();
 	private focusId: string | null = null;
@@ -316,7 +360,7 @@ export class TreeView extends TaskTreeView {
 		rootUl.setAttribute("role", "tree");
 		rootUl.setAttribute("aria-label", "Tasks");
 		for (const node of roots) this.renderListNode(rootUl, node, model);
-		this.wireListKeyboard(rootUl, model);
+		this.wireTreeKeyboard(rootUl, model, TreeView.LIST_KEYS);
 	}
 
 	private renderListNode(ul: HTMLElement, node: TaskNode, model: BoardModel): void {
@@ -349,37 +393,41 @@ export class TreeView extends TaskTreeView {
 		}
 	}
 
-	/** The row element for a task id, within one rendered list. */
-	private rowFor(rootUl: HTMLElement, id: string): HTMLElement | null {
-		return rootUl.querySelector<HTMLElement>(`.tt-node[data-id="${CSS.escape(id)}"] > .tt-row`);
-	}
+	/**
+	 * What one layout's rows look like to the keyboard layer. The list and the diagram
+	 * differ only in which element is the row and how it carries its id — the walking,
+	 * folding and editing are identical, so they share one handler.
+	 */
+	private static readonly LIST_KEYS: KeyboardSpec = {
+		rowSelector: ".tt-row",
+		idOf: (row) => row.parentElement?.dataset.id ?? "",
+		rowFor: (c, id) => c.querySelector<HTMLElement>(`.tt-node[data-id="${CSS.escape(id)}"] > .tt-row`),
+	};
+
+	private static readonly DIAGRAM_KEYS: KeyboardSpec = {
+		// Scoped to boxes that carry a task: the project goal box has no data-id.
+		rowSelector: ".tt-dnode[data-id] > .tt-dbox",
+		idOf: (row) => row.parentElement?.dataset.id ?? "",
+		rowFor: (c, id) => c.querySelector<HTMLElement>(`.tt-dnode[data-id="${CSS.escape(id)}"] > .tt-dbox`),
+	};
 
 	/**
 	 * The keyboard path — the one thing the views had no answer for. Arrows walk the
-	 * visible rows, ← / → fold and unfold, Enter edits in place, Space toggles done.
+	 * visible rows, ← / → fold and unfold, Enter edits in place, Space toggles done, and
+	 * Alt+arrows restructure (the context menu's move/indent/outdent, without the menu).
 	 * Actions that rewrite the file re-render, so the row to land on afterwards is
 	 * remembered in `pendingFocusId` and re-focused on the way back.
 	 */
-	private wireListKeyboard(rootUl: HTMLElement, model: BoardModel): void {
-		const visibleRows = (): HTMLElement[] => Array.from(rootUl.querySelectorAll<HTMLElement>(".tt-row"));
+	private wireTreeKeyboard(container: HTMLElement, model: BoardModel, spec: KeyboardSpec): void {
+		const visibleRows = (): HTMLElement[] =>
+			Array.from(container.querySelectorAll<HTMLElement>(spec.rowSelector));
 
-		const wanted = this.pendingFocusId;
-		this.pendingFocusId = null;
-		const landing = (wanted ? this.rowFor(rootUl, wanted) : null) ?? visibleRows()[0];
-		if (landing) {
-			landing.tabIndex = 0;
-			if (wanted) landing.focus();
-		}
+		this.landFocus(visibleRows()[0], (id) => spec.rowFor(container, id));
 
-		this.registerDomEvent(rootUl, "keydown", (e: KeyboardEvent) => {
-			const el = e.target as HTMLElement | null;
-			// While an inline edit is open the input owns every key, Escape included.
-			// `instanceOf` rather than `instanceof`: a popped-out window has its own
-			// HTMLInputElement, and the bare operator would miss it.
-			if (!el || el.instanceOf(HTMLInputElement) || el.instanceOf(HTMLTextAreaElement)) return;
-			const row = el.closest<HTMLElement>(".tt-row");
-			if (!row || !rootUl.contains(row)) return;
-			const node = this.byId.get(row.parentElement?.dataset.id ?? "");
+		this.registerDomEvent(container, "keydown", (e: KeyboardEvent) => {
+			const row = this.keyboardRow(e, container, spec.rowSelector);
+			if (!row) return;
+			const node = this.byId.get(spec.idOf(row));
 			if (!node) return;
 
 			const rows = visibleRows();
@@ -398,6 +446,11 @@ export class TreeView extends TaskTreeView {
 				this.toggleCollapse(node.id);
 			};
 
+			// Alt+arrows restructure. Checked first: they share the arrow keys with
+			// navigation, and a restructure must never also move the focus.
+			if (e.altKey && this.handleStructureKey(e, node, model)) return;
+			if (this.handleSharedKey(e, row, node, model)) return;
+
 			switch (e.key) {
 				case "ArrowDown":
 					moveTo(rows[idx + 1]);
@@ -413,25 +466,145 @@ export class TreeView extends TaskTreeView {
 				case "ArrowLeft":
 					// Open branch closes; a leaf climbs to its parent.
 					if (node.children.length > 0 && !this.collapsed.has(node.id)) fold();
-					else if (node.parentId) moveTo(this.rowFor(rootUl, node.parentId));
-					return;
-				case "Enter": {
-					const textEl = row.querySelector<HTMLElement>(".tt-node-text");
-					if (!textEl) return;
-					e.preventDefault();
-					this.startInlineEdit(textEl, node, model);
-					return;
-				}
-				case " ":
-					if (!node.isTask) return;
-					e.preventDefault(); // Space on a focusable div would page-scroll
-					this.pendingFocusId = node.id;
-					void this.cycle(node, model);
+					else if (node.parentId) moveTo(spec.rowFor(container, node.parentId));
 					return;
 				default:
 					return;
 			}
 		});
+	}
+
+	/**
+	 * Miller columns navigate across panes, not up and down one list, so they get their
+	 * own arrow semantics: ↑↓ within the pane, → drills in, ← steps back out.
+	 */
+	private wireColumnsKeyboard(wrap: HTMLElement, model: BoardModel): void {
+		const rowFor = (id: string): HTMLElement | null =>
+			wrap.querySelector<HTMLElement>(`.tt-col-item[data-id="${CSS.escape(id)}"]`);
+		this.landFocus(wrap.querySelector<HTMLElement>(".tt-col-item"), rowFor);
+
+		this.registerDomEvent(wrap, "keydown", (e: KeyboardEvent) => {
+			const row = this.keyboardRow(e, wrap, ".tt-col-item");
+			if (!row) return;
+			const node = this.byId.get(row.dataset.id ?? "");
+			if (!node) return;
+
+			if (e.altKey && this.handleStructureKey(e, node, model)) return;
+			if (this.handleSharedKey(e, row, node, model)) return;
+
+			const pane = row.closest<HTMLElement>(".tt-column-pane");
+			const panes = Array.from(wrap.querySelectorAll<HTMLElement>(".tt-column-pane"));
+			const colIndex = pane ? panes.indexOf(pane) : -1;
+			const siblings = pane
+				? Array.from(pane.querySelectorAll<HTMLElement>(".tt-col-item"))
+				: [];
+			const at = siblings.indexOf(row);
+			const moveTo = (to: HTMLElement | null | undefined): void => {
+				if (!to) return;
+				e.preventDefault();
+				row.tabIndex = -1;
+				to.tabIndex = 0;
+				to.focus();
+				to.scrollIntoView({ block: "nearest" });
+			};
+
+			switch (e.key) {
+				case "ArrowDown":
+					moveTo(siblings[at + 1]);
+					return;
+				case "ArrowUp":
+					moveTo(siblings[at - 1]);
+					return;
+				case "ArrowRight":
+					// Drill in, landing on the first child in the pane that opens.
+					if (node.children.length === 0 || colIndex < 0) return;
+					e.preventDefault();
+					this.pendingFocusId = node.children[0]?.id ?? node.id;
+					this.selectColumn(node, colIndex);
+					return;
+				case "ArrowLeft": {
+					// Step back out to the parent's pane.
+					if (!node.parentId) return;
+					moveTo(rowFor(node.parentId));
+					return;
+				}
+				default:
+					return;
+			}
+		});
+	}
+
+	/** The focusable row an event came from, or null when the keys aren't ours to take. */
+	private keyboardRow(e: KeyboardEvent, container: HTMLElement, rowSelector: string): HTMLElement | null {
+		const el = e.target as HTMLElement | null;
+		// While an inline edit is open the input owns every key, Escape included.
+		// `instanceOf` rather than `instanceof`: a popped-out window has its own
+		// HTMLInputElement, and the bare operator would miss it.
+		if (!el || el.instanceOf(HTMLInputElement) || el.instanceOf(HTMLTextAreaElement)) return null;
+		const row = el.closest<HTMLElement>(rowSelector);
+		return row && container.contains(row) ? row : null;
+	}
+
+	/** Give the layout one tab stop, and restore focus after a re-render that moved it. */
+	private landFocus(
+		fallback: HTMLElement | null | undefined,
+		rowFor: (id: string) => HTMLElement | null,
+	): void {
+		const wanted = this.pendingFocusId;
+		this.pendingFocusId = null;
+		const landing = (wanted ? rowFor(wanted) : null) ?? fallback;
+		if (!landing) return;
+		landing.tabIndex = 0;
+		if (wanted) landing.focus();
+	}
+
+	/** Keys that mean the same thing in every layout: edit, toggle, open the menu. */
+	private handleSharedKey(e: KeyboardEvent, row: HTMLElement, node: TaskNode, model: BoardModel): boolean {
+		if (e.key === "Enter") {
+			const textEl = row.querySelector<HTMLElement>(".tt-node-text");
+			if (!textEl) return false;
+			e.preventDefault();
+			this.startInlineEdit(textEl, node, model);
+			return true;
+		}
+		if (e.key === " ") {
+			if (!node.isTask) return false;
+			e.preventDefault(); // Space on a focusable element would page-scroll
+			this.pendingFocusId = node.id;
+			void this.cycle(node, model);
+			return true;
+		}
+		// The menu key (and its Shift+F10 twin) is the keyboard's right-click: without it,
+		// everything only the context menu offers stays mouse-only.
+		if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+			e.preventDefault();
+			const r = row.getBoundingClientRect();
+			this.buildNodeMenu(node, model).showAtPosition({ x: r.left + 16, y: r.bottom });
+			return true;
+		}
+		return false;
+	}
+
+	/** Alt+arrows: the restructure actions, straight from the keyboard. */
+	private handleStructureKey(e: KeyboardEvent, node: TaskNode, model: BoardModel): boolean {
+		const run = (op: Promise<void>): true => {
+			e.preventDefault();
+			this.pendingFocusId = node.id; // follow the task, not the position
+			void op;
+			return true;
+		};
+		switch (e.key) {
+			case "ArrowUp":
+				return run(this.moveUp(node, model));
+			case "ArrowDown":
+				return run(this.moveDown(node, model));
+			case "ArrowRight":
+				return run(this.indent(node, model));
+			case "ArrowLeft":
+				return run(this.outdent(node, model));
+			default:
+				return false;
+		}
 	}
 
 	/** A board with no tasks — a legitimate state now that the starter template can be empty. */
@@ -458,6 +631,7 @@ export class TreeView extends TaskTreeView {
 		// flow into it. While focused on a subtree, that node is the apex instead.
 		if (this.focusId) {
 			for (const node of roots) this.renderDiagramNode(canvas, node, model);
+			this.wireTreeKeyboard(canvas, model, TreeView.DIAGRAM_KEYS);
 			this.scheduleDependencyOverlay(canvas, model);
 			return;
 		}
@@ -468,6 +642,7 @@ export class TreeView extends TaskTreeView {
 			const kids = gnode.createDiv({ cls: "tt-dchildren" });
 			for (const node of roots) this.renderDiagramNode(kids, node, model);
 		}
+		this.wireTreeKeyboard(canvas, model, TreeView.DIAGRAM_KEYS);
 		this.scheduleDependencyOverlay(canvas, model);
 	}
 
@@ -488,16 +663,15 @@ export class TreeView extends TaskTreeView {
 	 */
 	private drawDependencyEdges(canvas: HTMLElement, model: BoardModel): void {
 		const SVG_NS = "http://www.w3.org/2000/svg";
-		const origin = canvas.getBoundingClientRect();
 		const svg = document.createElementNS(SVG_NS, "svg");
 		svg.classList.add("tt-dep-svg");
 		svg.setAttribute("width", String(canvas.scrollWidth));
 		svg.setAttribute("height", String(canvas.scrollHeight));
 
-		const boxOf = (id: string): DOMRect | null => {
-			const dnode = canvas.querySelector(`.tt-dnode[data-id="${id}"]`);
+		const boxOf = (id: string): LocalRect | null => {
+			const dnode = canvas.querySelector(`.tt-dnode[data-id="${CSS.escape(id)}"]`);
 			const box = dnode?.querySelector(":scope > .tt-dbox");
-			return box ? box.getBoundingClientRect() : null;
+			return box instanceof HTMLElement ? localRect(box, canvas) : null;
 		};
 
 		let drawn = 0;
@@ -520,20 +694,20 @@ export class TreeView extends TaskTreeView {
 			let y2: number;
 			if (hGap >= vGap && hGap > -8) {
 				const ltr = gapRight >= gapLeft;
-				const x1 = (ltr ? from.right : from.left) - origin.left;
-				const y1 = from.top + from.height / 2 - origin.top;
-				x2 = (ltr ? to.left : to.right) - origin.left;
-				y2 = to.top + to.height / 2 - origin.top;
+				const x1 = ltr ? from.right : from.left;
+				const y1 = from.top + from.height / 2;
+				x2 = ltr ? to.left : to.right;
+				y2 = to.top + to.height / 2;
 				const bend = Math.min(80, Math.max(12, Math.abs(x2 - x1) / 2));
 				const c1 = ltr ? x1 + bend : x1 - bend;
 				const c2 = ltr ? x2 - bend : x2 + bend;
 				d = `M ${x1} ${y1} C ${c1} ${y1}, ${c2} ${y2}, ${x2} ${y2}`;
 			} else {
 				const ttb = gapDown >= gapUp;
-				const x1 = from.left + from.width / 2 - origin.left;
-				const y1 = (ttb ? from.bottom : from.top) - origin.top;
-				x2 = to.left + to.width / 2 - origin.left;
-				y2 = (ttb ? to.top : to.bottom) - origin.top;
+				const x1 = from.left + from.width / 2;
+				const y1 = ttb ? from.bottom : from.top;
+				x2 = to.left + to.width / 2;
+				y2 = ttb ? to.top : to.bottom;
 				const bend = Math.min(60, Math.max(10, Math.abs(y2 - y1) / 2));
 				const c1 = ttb ? y1 + bend : y1 - bend;
 				const c2 = ttb ? y2 - bend : y2 + bend;
@@ -624,6 +798,8 @@ export class TreeView extends TaskTreeView {
 		dnode.dataset.depth = String(node.depth);
 		const box = dnode.createDiv({ cls: "tt-dbox" });
 		box.setAttribute("data-status", node.statusChar); // not `data-task`: Obsidian core styles that attr
+		box.setAttribute("data-role", node.effectiveRole); // drives the card's status edge
+		box.tabIndex = -1; // roving tabindex, same contract as the list layout
 		this.buildRowContent(box, node, model, {
 			toggle: "collapse",
 			editTrigger: "click",
@@ -670,6 +846,9 @@ export class TreeView extends TaskTreeView {
 				if (pane) wrap.appendChild(pane);
 			}
 		}
+
+		// After the DOM settles, so the tab stop lands on a pane that is actually there.
+		this.wireColumnsKeyboard(wrap, model);
 	}
 
 	private renderColumnPane(
@@ -703,6 +882,7 @@ export class TreeView extends TaskTreeView {
 			item.dataset.line = String(node.line);
 			item.dataset.subtreeEnd = String(node.lastDescLine);
 			item.setAttribute("data-status", node.statusChar); // not `data-task`: Obsidian core styles that attr
+			item.tabIndex = -1; // roving tabindex, same contract as the list layout
 			if (node.id === selectedId) item.addClass("is-selected");
 			this.buildRowContent(item, node, model, {
 				toggle: "drill",
@@ -1025,6 +1205,11 @@ export class TreeView extends TaskTreeView {
 	}
 
 	private nodeMenu(e: MouseEvent, node: TaskNode, model: BoardModel): void {
+		this.buildNodeMenu(node, model).showAtMouseEvent(e);
+	}
+
+	/** The node context menu, built but not shown — the keyboard opens it by position. */
+	private buildNodeMenu(node: TaskNode, model: BoardModel): Menu {
 		const menu = new Menu();
 		for (const col of model.columns) {
 			menu.addItem((i) =>
@@ -1113,7 +1298,7 @@ export class TreeView extends TaskTreeView {
 		menu.addItem((i) =>
 			i.setTitle("Reveal in board").setIcon("file").onClick(() => this.openAtLine(model, node.line)),
 		);
-		menu.showAtMouseEvent(e);
+		return menu;
 	}
 
 	private async renamePrompt(node: TaskNode, model: BoardModel): Promise<void> {

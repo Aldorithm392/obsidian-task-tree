@@ -121,7 +121,15 @@ Release: `npm version patch|minor|major` (bumps manifest + versions.json), push 
 - Do **not** `detachLeavesOfType` in `onunload` (disrupts user layout).
 - Dynamic values (progress width, chip color) may use inline `style.setProperty`; everything else is
   a CSS class in `styles.css` using Obsidian CSS variables.
-- Obsidian is a GUI — the views can't be run here. Verify pure logic with `npm test`; verify the UI by
-  loading into a real vault. The `examples/` bundle doubles as a parser fixture.
+- **Spacing is tokens, not literals.** Every gap/padding in the tree views comes from a custom
+  property on `.tt-view` (`--tt-connector`, `--tt-row-gap`, `--tt-indent`, …); `.tt-view.is-compact`
+  retunes the whole view in one block. Add a token rather than a hard-coded px in a rule.
+- **Overlay geometry uses the offset chain, never `getBoundingClientRect`.** The inverted diagram
+  wraps the canvas in `transform: scaleX(-1)` and the SVG overlays live inside it, so screen
+  coordinates come back mirrored. `localRect()` in `tree-view.ts` is the one way to measure.
+- Obsidian is a GUI — the views can't be run here. Verify pure logic with `npm test`; verify *layout*
+  with `tools/visual/` (real DOM + real stylesheet, screenshotted in headless Chromium — see
+  `docs/dev/VISUAL_HARNESS.md`); verify behaviour by loading into a real vault. The `examples/`
+  bundle doubles as a parser fixture.
 - `tsconfig` uses `verbatimModuleSyntax` + `erasableSyntaxOnly` + `allowImportingTsExtensions`: use
   `import type` for type-only imports and `.ts` extensions on relative imports.
