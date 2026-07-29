@@ -1,6 +1,8 @@
 // Core data types for Task Tree. This module is pure (no Obsidian import) so the
 // logic that depends on it can be unit-tested outside the Obsidian runtime.
 
+import type { NoteProgress } from "./noteprogress.ts";
+
 /**
  * The stable semantic layer. Column names and status characters are user-configurable,
  * but roll-up and overrides always reason about *roles*, never raw characters.
@@ -101,6 +103,11 @@ export interface TaskNode {
 	isDependencyBlocked?: boolean;
 	/** Set by loadBoard: the trailing [[link]] target when it is this task's OWN note. */
 	ownNoteLink?: string;
+	/**
+	 * Set by loadBoard: checklist work found recursively in this task's own note and the
+	 * task-notes below it. A SEPARATE signal — read-only, never feeds roll-up.
+	 */
+	noteProgress?: NoteProgress;
 }
 
 export interface RollupOptions {

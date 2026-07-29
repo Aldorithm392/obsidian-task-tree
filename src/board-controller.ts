@@ -1,11 +1,14 @@
 import { Notice, TFile, normalizePath, type App } from "obsidian";
 import type TaskTreePlugin from "./main.ts";
-import type { ColumnDef, RollupOptions, TaskNode } from "./model/types.ts";
+import type { ColumnDef, Role, RollupOptions, TaskNode } from "./model/types.ts";
 import { buildTree, flatten } from "./model/parser.ts";
 import { computeRollup } from "./model/rollup.ts";
 import { markBlockedPaths, resolveEdges, type EdgeGraph } from "./model/insights.ts";
-import { columnsFromFrontmatter } from "./model/okf.ts";
+import { columnsFromFrontmatter, isTaskNoteFrontmatter } from "./model/okf.ts";
 import { expectedNoteFields, noteFieldsDrift, type ExpectedNoteFields } from "./model/notemeta.ts";
+import { walkNoteProgress, type NoteSnapshot } from "./model/noteprogress.ts";
+import { renderNoteSections, renderStarterTasks } from "./model/templates.ts";
+import { roleForStatus } from "./columns.ts";
 import { getIndentUnit } from "./settings.ts";
 import {
 	addTagInText,
@@ -21,7 +24,6 @@ import {
 	setTaskTextInText,
 	type MoveSubtreeOptions,
 } from "./model/writer.ts";
-import type { Role } from "./model/types.ts";
 
 /** Everything a view needs to render one board, built fresh from disk + cache. */
 export interface BoardModel {
@@ -70,11 +72,21 @@ export async function loadBoard(
 
 	// Resolve each task's OWN note (the trailing [[link]], verified against the linked
 	// file's `type: task-note` frontmatter) so views can de-duplicate the visible title.
+	const ownNotes = new Map<TaskNode, TFile>();
 	for (const n of flatten(roots)) {
 		if (!n.isTask) continue;
 		const link = lastWikilink(n.text);
-		if (link && resolveTaskNote(plugin, file.path, n)) n.ownNoteLink = link;
+		if (!link) continue;
+		const note = resolveTaskNote(plugin, file.path, n);
+		if (!note) continue;
+		n.ownNoteLink = link;
+		ownNotes.set(n, note);
 	}
+
+	// The depth signal: how much unfinished checklist work lives inside those notes and
+	// the task-notes THEY link to. Read-only, cache-only, and — like dependencies —
+	// deliberately kept out of computeRollup above.
+	if (settings.showNoteProgress) attachNoteProgress(plugin, columns, ownNotes);
 
 	// One indentation level = the whitespace a child adds on top of its PARENT's indent
 	// (not a child's full leading whitespace — a root could itself be indented). Detected
@@ -300,8 +312,8 @@ export async function renameBoard(plugin: TaskTreePlugin, file: TFile, title: st
 	}
 }
 
-/** Body of a brand-new board: managed frontmatter + a couple of starter tasks to show the shape. */
-function boardFileContent(title: string, unit: string): string {
+/** Body of a brand-new board: managed frontmatter + the configured starter tasks. */
+function boardFileContent(title: string, unit: string, starterTasks: string): string {
 	return [
 		"---",
 		"type: task-tree",
@@ -310,9 +322,10 @@ function boardFileContent(title: string, unit: string): string {
 		"---",
 		"",
 		// No body H1: the inline title / view header already carries the name.
-		"- [ ] First task",
-		`${unit}- [ ] A subtask`,
-		"- [ ] Second task",
+		// Starter tasks are a SETTING — the shipped defaults are English, and a board
+		// created in another language shouldn't be seeded with someone else's words.
+		// An empty template means an empty board; the views offer to add the first task.
+		...renderStarterTasks(starterTasks, unit),
 		"",
 	].join("\n");
 }
@@ -333,7 +346,10 @@ export async function createBoardFile(plugin: TaskTreePlugin, title: string, fol
 		}
 	}
 
-	return app.vault.create(path, boardFileContent(title, getIndentUnit(plugin.settings)));
+	return app.vault.create(
+		path,
+		boardFileContent(title, getIndentUnit(plugin.settings), plugin.settings.newBoardStarterTasks),
+	);
 }
 
 // ---- task = note -----------------------------------------------------------
@@ -368,7 +384,13 @@ function cleanTitle(text: string): string {
 }
 
 /** The self-describing frontmatter + body for a task's own note (an OKF concept). */
-function taskNoteContent(node: TaskNode, meta: TaskNoteMeta, boardName: string, noteName: string): string {
+function taskNoteContent(
+	node: TaskNode,
+	meta: TaskNoteMeta,
+	boardName: string,
+	noteName: string,
+	sections: string,
+): string {
 	// Built from the SAME expected-fields shape the reconcile pass enforces, so a
 	// freshly-created note and a reconciled one are byte-identical. JSON-encode the
 	// string values so a colon/quote/bracket in a title can't break the YAML.
@@ -392,7 +414,8 @@ function taskNoteContent(node: TaskNode, meta: TaskNoteMeta, boardName: string, 
 	if (node.hasStoredId) lines.push(`task_id: ${node.id}`);
 	// No body H1: Obsidian's inline title already shows the note name — an H1 would
 	// render the title twice, stacked. The frontmatter `title` carries it for agents.
-	lines.push("---", "", "## Progress", "", "## Status", "", "## Notes", "");
+	// The section headings are a setting for the same reason the starter tasks are.
+	lines.push("---", "", ...renderNoteSections(sections));
 	return lines.join("\n");
 }
 
@@ -430,10 +453,73 @@ export async function openOrCreateTaskNote(
 		}
 	}
 
-	const created = await app.vault.create(path, taskNoteContent(node, meta, model.file.basename, name));
+	const created = await app.vault.create(
+		path,
+		taskNoteContent(node, meta, model.file.basename, name, plugin.settings.taskNoteSections),
+	);
 	await app.vault.process(model.file, (d) => setTaskTextInText(d, node.line, `${node.text} [[${name}]]`));
 	await touch(plugin, model.file);
 	await app.workspace.getLeaf("tab").openFile(created);
+}
+
+// ---- recursive note progress (v1.1) ----------------------------------------
+
+/**
+ * Attach the recursive note-progress signal to every task that owns a note.
+ *
+ * The walk itself is pure (`model/noteprogress.ts`); this is only the adapter that
+ * turns a vault path into a snapshot. Two properties matter here: it reads nothing
+ * but the metadata cache (no file I/O on the render path), and it visits nothing
+ * that isn't `type: task-note` — the same opt-in gate the rest of the plugin honours.
+ */
+function attachNoteProgress(
+	plugin: TaskTreePlugin,
+	columns: ColumnDef[],
+	ownNotes: Map<TaskNode, TFile>,
+): void {
+	if (ownNotes.size === 0) return;
+	const maxDepth = Math.max(1, Math.floor(plugin.settings.noteProgressDepth));
+
+	// One snapshot per note per render: sibling tasks routinely reach the same note,
+	// and a cache lookup repeated a hundred times is still a hundred lookups.
+	const snapshots = new Map<string, NoteSnapshot | null>();
+	const read = (path: string): NoteSnapshot | null => {
+		const hit = snapshots.get(path);
+		if (hit !== undefined) return hit;
+		const snap = readNoteSnapshot(plugin, columns, path);
+		snapshots.set(path, snap);
+		return snap;
+	};
+
+	for (const [node, note] of ownNotes) {
+		node.noteProgress = walkNoteProgress(note.path, read, { maxDepth }) ?? undefined;
+	}
+}
+
+/** One task-note as the walker sees it: its checklist roles + the task-notes it links to. */
+function readNoteSnapshot(plugin: TaskTreePlugin, columns: ColumnDef[], path: string): NoteSnapshot | null {
+	const f = plugin.app.vault.getAbstractFileByPath(path);
+	if (!(f instanceof TFile)) return null;
+	const cache = plugin.app.metadataCache.getFileCache(f);
+	if (!isTaskNoteFrontmatter(cache?.frontmatter)) return null;
+
+	const roles: Role[] = [];
+	for (const li of cache?.listItems ?? []) {
+		if (li.task === undefined) continue;
+		roles.push(roleForStatus(li.task, columns, plugin.settings.unknownRole));
+	}
+
+	// Resolved outbound links, filtered to task-notes. The board itself is linked from
+	// every note's frontmatter and is `type: task-tree`, so the gate drops it here —
+	// which is also what stops the walk from climbing back onto the board.
+	const links: string[] = [];
+	for (const dest of Object.keys(plugin.app.metadataCache.resolvedLinks[path] ?? {})) {
+		const d = plugin.app.vault.getAbstractFileByPath(dest);
+		if (!(d instanceof TFile)) continue;
+		if (!isTaskNoteFrontmatter(plugin.app.metadataCache.getFileCache(d)?.frontmatter)) continue;
+		links.push(dest);
+	}
+	return { roles, links };
 }
 
 /** A task's human title: its line text with any [[wikilink]] removed and whitespace collapsed. */
@@ -448,7 +534,7 @@ function resolveTaskNote(plugin: TaskTreePlugin, sourcePath: string, node: TaskN
 	const dest = plugin.app.metadataCache.getFirstLinkpathDest(link, sourcePath);
 	if (!(dest instanceof TFile)) return null;
 	const fm = plugin.app.metadataCache.getFileCache(dest)?.frontmatter;
-	if (fm?.["type"] !== "task-note") return null;
+	if (!isTaskNoteFrontmatter(fm)) return null;
 	// If the note records its owning task, require a match — a stray cross-reference
 	// link can then never clobber a different task's note.
 	if (node.hasStoredId && fm["task_id"] !== undefined && fm["task_id"] !== node.id) return null;

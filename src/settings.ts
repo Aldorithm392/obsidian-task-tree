@@ -29,6 +29,14 @@ export interface TaskTreeSettings {
 	agentInstructions: "ask" | "on" | "off";
 	/** Checkbox click steps through every column (todo → doing → done → …) instead of toggling done. */
 	checkboxCycles: boolean;
+	/** Show the recursive note-progress badge (checklists inside a task's linked notes). */
+	showNoteProgress: boolean;
+	/** How many note levels the recursive walk follows. 1 = the task's own note only. */
+	noteProgressDepth: number;
+	/** Starter tasks written into a brand-new board. One per line; indent to nest. Empty = none. */
+	newBoardStarterTasks: string;
+	/** Section headings written into a new task-note. Comma-separated. Empty = none. */
+	taskNoteSections: string;
 }
 
 export const DEFAULT_SETTINGS: TaskTreeSettings = {
@@ -50,6 +58,12 @@ export const DEFAULT_SETTINGS: TaskTreeSettings = {
 	showTaskNoteLink: false,
 	checkboxCycles: false,
 	agentInstructions: "ask",
+	showNoteProgress: true,
+	noteProgressDepth: 3,
+	// English defaults, because something has to ship — both are settings precisely so a
+	// vault written in another language isn't stuck with them.
+	newBoardStarterTasks: "First task\n\tA subtask\nSecond task",
+	taskNoteSections: "Progress, Status, Notes",
 };
 
 /** The indentation unit used when the plugin writes moved or new lines. */
@@ -138,6 +152,36 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 				}),
 			);
 
+		new Setting(containerEl).setName("Depth (linked notes)").setHeading();
+		containerEl.createEl("p", {
+			cls: "setting-item-description",
+			text:
+				"A task's own note can carry its own checklists and link to deeper task-notes. Task Tree follows that trail and shows how much work really sits underneath — read-only, computed from the metadata cache, and never folded into a parent's roll-up.",
+		});
+
+		new Setting(containerEl)
+			.setName("Show note progress")
+			.setDesc("Badge a task with the checklist progress found inside its linked notes.")
+			.addToggle((t) =>
+				t.setValue(this.plugin.settings.showNoteProgress).onChange(async (v) => {
+					this.plugin.settings.showNoteProgress = v;
+					await this.plugin.saveSettings();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName("How deep to follow notes")
+			.setDesc("1 counts only the task's own note; 2 also counts the task-notes it links to, and so on. A + on the badge means there is more below.")
+			.addSlider((s) =>
+				s
+					.setLimits(1, 6, 1)
+					.setValue(this.plugin.settings.noteProgressDepth)
+					.onChange(async (v) => {
+						this.plugin.settings.noteProgressDepth = v;
+						await this.plugin.saveSettings();
+					}),
+			);
+
 		new Setting(containerEl).setName("Writing").setHeading();
 
 		new Setting(containerEl)
@@ -221,6 +265,35 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.taskNoteFolder)
 					.onChange(async (v) => {
 						this.plugin.settings.taskNoteFolder = v.replace(/^\/+|\/+$/g, "").trim();
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Starter tasks for a new board")
+			.setDesc(
+				"Written into a brand-new board so it opens with a shape instead of a blank page. One task per line; indent a line to nest it. Leave empty to start every board with no tasks.",
+			)
+			.addTextArea((t) => {
+				t.inputEl.rows = 4;
+				t.inputEl.addClass("tt-template-input");
+				t.setValue(this.plugin.settings.newBoardStarterTasks).onChange(async (v) => {
+					this.plugin.settings.newBoardStarterTasks = v;
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName("Task-note sections")
+			.setDesc(
+				'Headings written into a new task-note, comma-separated (e.g. "Progress, Status, Notes"). Leave empty for a note that is just its frontmatter.',
+			)
+			.addText((t) =>
+				t
+					.setPlaceholder("Progress, Status, Notes")
+					.setValue(this.plugin.settings.taskNoteSections)
+					.onChange(async (v) => {
+						this.plugin.settings.taskNoteSections = v;
 						await this.plugin.saveSettings();
 					}),
 			);

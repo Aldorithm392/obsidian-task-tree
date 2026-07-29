@@ -1,5 +1,14 @@
-import { FuzzySuggestModal, Modal, Setting, type App } from "obsidian";
+import {
+	FuzzySuggestModal,
+	Modal,
+	Setting,
+	prepareFuzzySearch,
+	renderResults,
+	type App,
+	type FuzzyMatch,
+} from "obsidian";
 import type { TaskNode } from "../model/types.ts";
+import { displayForm, foldDiacritics } from "../model/fuzzy.ts";
 
 interface PromptOptions {
 	title: string;
@@ -62,6 +71,35 @@ class PromptModal extends Modal {
 	}
 }
 
+/**
+ * A fuzzy picker that ignores accents: typing "dia" finds "día", "seman" finds
+ * "semaña". Obsidian's own fuzzy search is accent-SENSITIVE, which quietly makes
+ * every picker useless in half the languages people write their vaults in.
+ *
+ * Matching runs on the folded text; the suggestion is rendered from the *displayed*
+ * text. `foldDiacritics` is length-preserving against that display form, so the match
+ * ranges still highlight the right characters — accents and all.
+ */
+export abstract class AccentFuzzyModal<T> extends FuzzySuggestModal<T> {
+	override getSuggestions(query: string): FuzzyMatch<T>[] {
+		const items = this.getItems();
+		const folded = foldDiacritics(query).trim();
+		if (folded.length === 0) return items.map((item) => ({ item, match: { score: 0, matches: [] } }));
+
+		const search = prepareFuzzySearch(folded);
+		const out: FuzzyMatch<T>[] = [];
+		for (const item of items) {
+			const match = search(foldDiacritics(this.getItemText(item)));
+			if (match) out.push({ item, match });
+		}
+		return out.sort((a, b) => b.match.score - a.match.score);
+	}
+
+	override renderSuggestion(match: FuzzyMatch<T>, el: HTMLElement): void {
+		renderResults(el, displayForm(this.getItemText(match.item)), match.match);
+	}
+}
+
 export interface TaskChoice {
 	node: TaskNode;
 	label: string;
@@ -72,7 +110,7 @@ export function pickTask(app: App, placeholder: string, choices: TaskChoice[], o
 	new TaskPickModal(app, placeholder, choices, onPick).open();
 }
 
-class TaskPickModal extends FuzzySuggestModal<TaskChoice> {
+class TaskPickModal extends AccentFuzzyModal<TaskChoice> {
 	private choices: TaskChoice[];
 	private onPick: (node: TaskNode) => void;
 

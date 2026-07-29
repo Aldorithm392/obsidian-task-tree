@@ -68,6 +68,21 @@ role(node):
 
 Progress `K/D` = done active children / active children. **Rendered, never stored.**
 
+## Signals that are NOT roll-up
+
+Two things the views surface are deliberately kept out of the algorithm above, so a board's
+state stays recomputable from the board file alone:
+
+| Signal | Source | Effect |
+|---|---|---|
+| Dependency hold | `[tt-blocked-by:: …]` targets that aren't `done`/`cancelled` | badge + panel only |
+| Note progress | checklist items inside a task's `type: task-note` note, followed recursively through the task-notes *it* links to | badge + panel only |
+
+Note progress is read-only in both directions: the plugin never ticks a checkbox inside a note
+because of the board, and never changes a board status character because of a note. Writing
+`- [ ]` items into a task-note is therefore a safe way to record detail at any depth — the board
+shows that the work exists without absorbing it.
+
 ## Frontmatter keys (board)
 
 | Key | Meaning | Written by |

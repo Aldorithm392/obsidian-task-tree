@@ -11,7 +11,10 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
   tasks present. Empty folder setting → vault root; collision → " 2" suffix.
 - [ ] "Convert current file to a board" — adds `type: task-tree` + `title` without touching the body.
 - [ ] "Assign block IDs to all tasks in current file" — every task gets `^t-…` once; ids stable on re-run.
-- [ ] "Open a board…" — lists only `type: task-tree` files.
+- [ ] "Add a task to the open board" — works with the tree focused, with it parked in a sidebar,
+  and with only the Kanban open; the new row lands in edit mode.
+- [ ] "Open a board…" — lists only `type: task-tree` files; typing an unaccented query finds an
+  accented board (`dia` → `día`) and the match highlight lands on the right characters.
 - [ ] "Build the boards index (index.md)" — regenerates; every board listed, titles from frontmatter.
 - [ ] "Append an entry to the boards log (log.md)" — dated section, newest first; created if missing.
 
@@ -22,7 +25,9 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
   overlay draws dashed curves (red = held); overlay toggle hides them; both persist.
 - [ ] Tree columns: drill-down; inverted variant.
 - [ ] Kanban: drag between columns flips exactly one status char (check the file diff!); WIP-exceeded
-  column shows the over-limit style; column color tints header and chips.
+  column shows the over-limit style; column color tints header and chips. An empty column shows the
+  dashed drop target, and it vanishes as soon as a card lands there.
+- [ ] Context menus: "Mark as …" / "Move to …" show a distinct icon per role, not five checks.
 - [ ] Dashboard: stats, Blockers, "Waiting on dependencies" (when edges are held), Next up.
 - [ ] Full focus: open a subtree, edit inside it, exit.
 - [ ] Markdown in task text renders (a `[[link]]`, `**bold**`, a `#tag`); clicking a link opens it;
@@ -46,6 +51,27 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
 - [ ] "Open / create note": creates in the configured folder with self-describing frontmatter,
   appends the trailing `[[link]]`, opens in a new tab. Re-invoke → just opens.
 - [ ] Move the task's subtree → the note's `parent` / `depth` / `path` frontmatter resyncs.
+- [ ] Note sections match the "Task-note sections" setting; emptying it creates a note that is
+  just frontmatter.
+
+## Depth: recursive note progress
+
+- [ ] Add `- [ ]` / `- [x]` items to a task's note → the board task shows a `K/N` badge; ticking an
+  item in the note updates it, and **no board status character changes**.
+- [ ] Link a second `type: task-note` from that note, give it checklists → the badge counts both;
+  the dashboard lists the task under "Open inside linked notes".
+- [ ] Set the depth to 1 → the badge drops the deeper counts and shows a trailing `+`.
+- [ ] Link two notes to each other (a cycle) → the badge is finite and the view still renders.
+- [ ] Link a note to a plain note that is NOT `type: task-note` → its checklists are ignored.
+- [ ] Turn "Show note progress" off → every badge disappears; nothing else changes.
+
+## Keyboard (list layout)
+
+- [ ] Tab once into the tree, then ↑ ↓ walk rows with a visible focus ring (light **and** dark).
+- [ ] → opens a collapsed branch and ← closes an open one, **keeping focus on the same row**;
+  ← on a leaf jumps to its parent.
+- [ ] Enter opens the inline editor; Escape cancels it and Enter saves.
+- [ ] Space toggles done without scrolling the pane, and focus stays put after the re-render.
 
 ## Regression guard
 

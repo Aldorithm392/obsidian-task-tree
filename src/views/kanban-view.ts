@@ -19,11 +19,13 @@ import type TaskTreePlugin from "../main.ts";
 import {
 	breadcrumb,
 	createDependencyBadge,
+	createNoteProgressBadge,
 	createOverrideBadge,
 	createProgressBadge,
 	dependencyInfo,
 	placementColumn,
 	renderTaskText,
+	roleIcon,
 	taskDisplayText,
 } from "./card.ts";
 import { confirmModal, promptText } from "./modals.ts";
@@ -68,6 +70,12 @@ export class KanbanView extends TaskTreeView {
 
 			const list = colEl.createDiv({ cls: "tt-column-cards" });
 			list.dataset.colId = col.id;
+			// An empty column used to be a blank rectangle with nothing to say it accepts a
+			// card. The dashed placeholder is the drop affordance; CSS hides it the moment
+			// the column holds a card, including mid-drag.
+			if (count === 0) {
+				list.createDiv({ cls: "tt-column-empty", text: `Drop a task here to mark it ${col.name}` });
+			}
 			lists.set(col.id, list);
 		}
 
@@ -118,6 +126,7 @@ export class KanbanView extends TaskTreeView {
 		if (node.override) createOverrideBadge(meta, node.override);
 		createDependencyBadge(meta, node, dependencyInfo(node, model.graph));
 		createProgressBadge(meta, node);
+		createNoteProgressBadge(meta, node);
 		if (!node.isLeaf) meta.createSpan({ cls: "tt-parent-tag", text: "group" });
 		if (node.hasBlockedDescendant) {
 			const warn = meta.createSpan({ cls: "tt-warn", attr: { "aria-label": "A subtask below is blocked" } });
@@ -182,7 +191,8 @@ export class KanbanView extends TaskTreeView {
 			menu.addItem((i) =>
 				i
 					.setTitle(`Move to ${col.name}`)
-					.setIcon("arrow-right")
+					// One glyph per role: five identical arrows read as one blur.
+					.setIcon(roleIcon(col.role))
 					.onClick(() => void this.applyColumn(node, col, model)),
 			);
 		}

@@ -73,14 +73,35 @@ migration, a `tt_version` key can be introduced then, opt-in.
   rounds (`docs/dev/UX_QA_FINDINGS.md`), build-provenance attestations, release 1.0.0 published,
   directory submission live.
 
-## Next after 1.0 (v1.1 — depth through notes)
+## Shipped (v1.1 — depth through notes, and the keyboard)
 
-- **Recursive task detection across linked notes.** A task's own note can carry its own checklists and
-  links to deeper task-notes; the board detects and surfaces that pending work recursively (board task
-  → its note's tasks → *their* linked notes → …). Read-only note-progress badges computed from the
-  metadata cache; visited-set cycle guard; depth cap; opt-in frontmatter gate. A *separate signal* —
-  never feeds roll-up — so each file's state stays recomputable from that file alone. The user sees the
-  real depth of everything they do and documents each task as far as their project goes.
+- **Recursive task detection across linked notes.** A task's own note can carry its own checklists
+  and links to deeper task-notes; the board follows that trail and badges the task with the work it
+  finds (board task → its note's checklists → *their* linked notes → …). Read-only, computed from the
+  metadata cache, gated on `type: task-note`, with a visited-set cycle guard, a depth cap (setting,
+  default 3) and a hard note budget. A *separate signal* — never feeds roll-up — so each file's state
+  stays recomputable from that file alone. Surfaced as a badge in every view and an "Open inside
+  linked notes" section on the dashboard. `src/model/noteprogress.ts`, unit-tested.
+- **The keyboard path.** Arrow-key navigation through the tree (↑↓ to walk, ←→ to fold, Enter to edit
+  in place, Space to toggle done) on a roving tabindex with ARIA tree semantics, plus an
+  "Add a task to the open board" command that can take a hotkey. Capture no longer requires a mouse.
+- **Accent-insensitive pickers.** Typing `dia` now finds `día`. Length-preserving diacritic folding,
+  so fuzzy-match highlighting still lands on the right characters (`src/model/fuzzy.ts`).
+- **Generated text is no longer hard-coded English.** New-board starter tasks and task-note section
+  headings are settings; an empty starter template is legal and the tree offers to add the first task.
+- **QA round 3 fixes:** empty Kanban columns show a drop target · per-role icons in the "Mark as…" /
+  "Move to…" menus instead of five identical checks · the inline-edit field is capped instead of
+  stretching window-wide in the diagram/columns layouts · Escape is also bound at the capture phase
+  so a global hotkey layer can't swallow "cancel this edit".
+
+## Next (v1.2 — candidates, not commitments)
+
+- **Diagram packing.** Sibling groups with very different subtree heights leave large vertical gaps;
+  needs a real layout pass, measured on screen (open QA item).
+- **Keyboard, part two.** The arrow layer covers the list layout; diagram and columns still need it,
+  and there is no keyboard route to the context-menu actions (move/indent/outdent) yet.
+- **Note progress, deeper.** Today the badge counts checklist items. Clicking it could open the note
+  at the first unfinished item, and the walk could report *which* note holds the backlog.
 
 ## Later — through the philosophy's filter
 

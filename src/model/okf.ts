@@ -7,6 +7,23 @@ import { ALL_ROLES } from "./types.ts";
 /** The OKF `type` value that opts a file in to Task Tree management. */
 export const MANAGED_TYPE = "task-tree";
 
+/**
+ * The `type` value of a note that belongs to one task. It is the opt-in gate for
+ * everything the plugin does OUTSIDE a board: note-frontmatter reconcile, and the
+ * recursive note-progress walk. No other file is ever read.
+ */
+export const TASK_NOTE_TYPE = "task-note";
+
+/**
+ * A file is a task's own note only when its frontmatter declares `type: task-note`.
+ * Narrowing predicate: callers routinely go on to read other keys off the same object.
+ */
+export function isTaskNoteFrontmatter<T extends Record<string, unknown>>(
+	fm: T | undefined | null,
+): fm is T {
+	return !!fm && fm["type"] === TASK_NOTE_TYPE;
+}
+
 /** A file is managed only when its frontmatter declares `type: task-tree`. */
 export function isManagedFrontmatter(fm: Record<string, unknown> | undefined | null): boolean {
 	return !!fm && fm["type"] === MANAGED_TYPE;

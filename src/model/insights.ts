@@ -158,6 +158,25 @@ export function resolveEdges(roots: TaskNode[]): EdgeGraph {
 	return { edges, unresolved, cycleIds };
 }
 
+/**
+ * Tasks whose linked notes still hold unfinished checklist work — the depth the board
+ * alone can't show. Ordered deepest-backlog first, so the biggest hidden pile leads.
+ * A separate signal, like dependencies: it never touches roll-up.
+ */
+export function collectNoteWork(roots: TaskNode[]): Insight[] {
+	const out: Insight[] = [];
+	walkWithPath(roots, (n, path) => {
+		const p = n.noteProgress;
+		if (n.isTask && p && p.total > p.done) out.push({ node: n, path });
+	});
+	return out.sort((a, b) => pending(b.node) - pending(a.node));
+}
+
+function pending(n: TaskNode): number {
+	const p = n.noteProgress;
+	return p ? p.total - p.done : 0;
+}
+
 /** Dependency-held tasks, for the Blockers panel: waiting on unfinished work elsewhere. */
 export function collectDependencyBlocked(roots: TaskNode[]): Insight[] {
 	const out: Insight[] = [];

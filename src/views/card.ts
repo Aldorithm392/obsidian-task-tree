@@ -67,6 +67,23 @@ export function roleLabel(role: Role): string {
 }
 
 /**
+ * One glyph per role, so a "Mark as …" menu scans by shape instead of five identical
+ * check marks. Long-standing Lucide names only — Obsidian ships whatever Lucide
+ * version it likes, and a renamed icon would silently render nothing.
+ */
+const ROLE_ICON: Record<Role, string> = {
+	todo: "circle",
+	doing: "play",
+	done: "check",
+	cancelled: "x",
+	blocked: "ban",
+};
+
+export function roleIcon(role: Role): string {
+	return ROLE_ICON[role];
+}
+
+/**
  * The column a task belongs to: a leaf goes by its own status character; a parent
  * goes by its derived (rolled-up) role.
  */
@@ -100,6 +117,28 @@ export function createProgressBadge(parent: HTMLElement, node: TaskNode): HTMLEl
 	const pct = Math.round((node.progress.done / node.progress.total) * 100);
 	fill.style.width = pct + "%";
 	return wrap;
+}
+
+/**
+ * The depth badge: checklist work found in the task's own note and the task-notes
+ * below it. Read-only — it reports what the board can't see, and never changes a
+ * single status character. Silent when there is no note work at all.
+ */
+export function createNoteProgressBadge(parent: HTMLElement, node: TaskNode): HTMLElement | null {
+	const p = node.noteProgress;
+	if (!p || p.total <= 0) return null;
+	const badge = parent.createSpan({ cls: "tt-note-progress" });
+	if (p.done < p.total) badge.addClass("is-open");
+	setIcon(badge, "list-checks");
+	badge.createSpan({ cls: "tt-note-progress-text", text: `${p.done}/${p.total}${p.truncated ? "+" : ""}` });
+	const where =
+		p.notes === 1 ? "its note" : `its note and ${p.notes - 1} linked note${p.notes === 2 ? "" : "s"}`;
+	badge.setAttribute(
+		"aria-label",
+		`${p.done} of ${p.total} checklist items done in ${where}` +
+			(p.truncated ? " — deeper notes not counted" : ""),
+	);
+	return badge;
 }
 
 export function createOverrideBadge(parent: HTMLElement, role: Role): HTMLElement {

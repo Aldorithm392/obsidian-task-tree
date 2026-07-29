@@ -26,6 +26,10 @@ compatible with AI agents by following the methodology of Google's Open Knowledg
 - **Dependencies:** `[tt-blocked-by:: t-a1, t-b2]` — bare block ids, same board. A `done`/`cancelled`
   target releases the edge. **Separate signal: never feeds roll-up** (`resolveEdges` in
   `insights.ts` sets `isDependencyBlocked`; `computeRollup` never sees edges).
+- **Note progress:** checklists inside a task's `type: task-note` note, followed recursively through
+  the task-notes *it* links to. The **second separate signal**: read-only, cache-only, gated on
+  `type: task-note`, and `computeRollup` never sees it either. `walkNoteProgress` is pure; the vault
+  adapter (`attachNoteProgress` / `readNoteSnapshot`) lives in `board-controller.ts`.
 - **Roll-up:** post-order; override wins; leaf uses its own char; else `done` iff all non-cancelled
   children done, `blocked` if any child blocked, `doing` if any started, else `todo`. Progress `K/D`
   is rendered, never stored. Children win over a parent's char.
@@ -55,22 +59,36 @@ src/
                        + resolveEdges / collectDependencyBlocked (tt-blocked-by graph, cycles)
     notemeta.ts        expectedNoteFields / noteFieldsDrift — single source of truth for task-note
                        structural frontmatter (creation + reconcile build from it)
+    noteprogress.ts    walkNoteProgress() — recursive checklist counts across linked task-notes
+                       (caller supplies the reader; visited-set + depth cap + note budget)
+    fuzzy.ts           foldDiacritics() / displayForm() — length-preserving accent folding
+    templates.ts       parse/renderStarterTasks + parse/renderNoteSections (generated text = settings)
     writer.ts          setStatus/Override/BlockedBy, assignIds, moveSubtree + CRUD: insert/delete/setText/addTag
     ids.ts             generateId() / collectBlockIds()
-    okf.ts             isManagedFrontmatter(), columnsFromFrontmatter(), index/log builders
+    okf.ts             isManagedFrontmatter(), isTaskNoteFrontmatter(), columnsFromFrontmatter(),
+                       index/log builders
   views/
     base-view.ts       TaskTreeView base + VIEW_TYPE_* (kanban/tree/dashboard); dashboard header + blockers panel
     kanban-view.ts     columns from model; SortableJS per column = Operation B; CRUD menu
     tree-view.ts       3 layouts (list/diagram/columns), collapse/focus, full-focus, checkbox toggle (opt-in column cycle), reparent = Operation A
     dashboard-view.ts  extends TreeView: full header + blockers panel + tree
-    card.ts            shared chip / progress / override-badge DOM
-    modals.ts          promptText() / confirmModal()
+    card.ts            shared chip / progress / note-progress / override-badge DOM + roleIcon()
+    modals.ts          promptText() / confirmModal() / AccentFuzzyModal (accent-insensitive pickers)
 ```
 
 **Dashboard + editing:** views carry a compact dashboard header (rename board / add task / stats);
 `DashboardView` adds the full Blockers & next-up panel. Editing (add/delete/rename/tag) goes through
 `board-controller` CRUD wrappers → pure `writer` ops. `markBlockedPaths` runs in `loadBoard`, so every
 view can show ⚠ on ancestors of a blocked leaf. Tree layout + focus state persist in the leaf view-state.
+
+**Keyboard:** the list layout is an ARIA tree on a roving tabindex (`wireListKeyboard` in
+`tree-view.ts`): ↑↓ walk, ←→ fold, Enter edits, Space toggles. Anything that writes re-renders, so
+the row to land on afterwards is stashed in `pendingFocusId` and re-focused on the way back — the
+same trick `pendingEdit` uses in `base-view.ts`.
+
+**Generated text is a setting, not a literal.** Starter tasks and task-note headings come from
+`newBoardStarterTasks` / `taskNoteSections` via `model/templates.ts`. When adding anything the plugin
+*writes into a user's vault*, put it behind a setting rather than hard-coding English.
 
 **Golden rule:** everything in `src/model/**` stays pure (no `obsidian` import) and written in
 **erasable** TypeScript (no enums, no parameter properties) — that is what lets `tests/run.mjs` run it

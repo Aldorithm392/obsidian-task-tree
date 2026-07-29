@@ -26,6 +26,7 @@ import {
 	collectBlockers,
 	collectDependencyBlocked,
 	collectNextUp,
+	collectNoteWork,
 	computeSummary,
 	type Insight,
 } from "../model/insights.ts";
@@ -102,6 +103,22 @@ export abstract class TaskTreeView extends ItemView {
 		this.filePath = path;
 		this.app.workspace.requestSaveLayout();
 		await this.render();
+	}
+
+	/**
+	 * Keyboard entry point for the "Add a task to the board" command: append a task at
+	 * the top level and drop straight into typing it, exactly like the toolbar button —
+	 * so capture never requires reaching for the mouse.
+	 */
+	async addTaskFromCommand(): Promise<void> {
+		const file = this.currentFile();
+		if (!file) {
+			new Notice("No board open in this view.");
+			return;
+		}
+		void this.app.workspace.revealLeaf(this.leaf);
+		const model = await loadBoard(this.plugin, file, { reconcile: false });
+		this.queueEditAt(await addRootTask(this.plugin, model));
 	}
 
 	protected currentFile(): TFile | null {
@@ -278,6 +295,21 @@ export abstract class TaskTreeView extends ItemView {
 			this.rerender();
 		};
 
+		// Escape is bound at the CAPTURE phase as well: some global hotkey layers (and
+		// Obsidian's own modal stack) eat the bubbling keydown, and losing Escape means
+		// losing "cancel this edit" entirely. `finish` is idempotent, so the two paths
+		// firing together is harmless.
+		this.registerDomEvent(
+			input,
+			"keydown",
+			(e) => {
+				if (e.key !== "Escape") return;
+				e.preventDefault();
+				e.stopPropagation();
+				finish(false);
+			},
+			{ capture: true },
+		);
 		this.registerDomEvent(input, "keydown", (e) => {
 			if (e.key === "Enter") {
 				e.preventDefault();
@@ -397,6 +429,14 @@ export abstract class TaskTreeView extends ItemView {
 		if (held.length > 0) {
 			this.renderInsightList(panel, "Waiting on dependencies", held, model, "");
 		}
+		// The depth the board can't show: work parked inside the notes hanging off it.
+		const inNotes = collectNoteWork(model.roots);
+		if (inNotes.length > 0) {
+			this.renderInsightList(panel, "Open inside linked notes", inNotes.slice(0, 8), model, "", (it) => {
+				const p = it.node.noteProgress;
+				return p ? `${p.total - p.done} left${p.truncated ? "+" : ""}` : "";
+			});
+		}
 		this.renderInsightList(panel, "Next up", collectNextUp(model.roots).slice(0, 8), model, "No open tasks.");
 	}
 
@@ -406,6 +446,7 @@ export abstract class TaskTreeView extends ItemView {
 		items: Insight[],
 		model: BoardModel,
 		empty: string,
+		detail?: (it: Insight) => string,
 	): void {
 		const sec = panel.createDiv({ cls: "tt-panel-sec" });
 		sec.createDiv({ cls: "tt-panel-title", text: items.length ? `${title} (${items.length})` : title });
@@ -420,6 +461,8 @@ export abstract class TaskTreeView extends ItemView {
 				rowEl.createSpan({ cls: "tt-breadcrumb", text: it.path.map((n) => taskDisplayText(n) || "…").join(" › ") });
 			}
 			rowEl.createSpan({ cls: "tt-panel-item-text", text: taskDisplayText(it.node) || "(untitled)" });
+			const extra = detail?.(it);
+			if (extra) rowEl.createSpan({ cls: "tt-panel-item-detail", text: extra });
 			this.registerDomEvent(rowEl, "click", () => this.openAtLine(model, it.node.line));
 		}
 	}

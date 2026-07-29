@@ -10,7 +10,7 @@ import CONTRACT_MD from "../docs/agent/CONTRACT.md";
 import SKILL_MD from "../skills/task-tree/SKILL.md";
 
 /** Bump when the embedded instructions change meaningfully — a bump re-stamps once. */
-const SECTION_VERSION = 1;
+const SECTION_VERSION = 2;
 const BEGIN = `<!-- task-tree:agents:v${SECTION_VERSION}:begin -->`;
 const ANY_BEGIN_RE = /<!-- task-tree:agents:v\d+:begin -->/;
 const END = "<!-- task-tree:agents:end -->";
@@ -38,6 +38,10 @@ progress, stable block ids, and dependencies. Before editing tasks, know the rul
    indentation unit. A task's own note is its **trailing** \`[[wikilink]]\`.
 5. Dependencies: \`[tt-blocked-by:: t-id1, t-id2]\` — bare block ids on the same board;
    released when the target task is done/cancelled.
+6. **Detail belongs in the task's note.** A task-note can carry its own \`- [ ]\` checklists
+   and link to deeper task-notes; the plugin surfaces that as a read-only depth badge on
+   the board task. It never feeds roll-up and never flips a board status character, so
+   writing checklists into notes is safe — and better than flattening them onto the board.
 
 The plugin reconciles task-note frontmatter automatically after your edits — you may
 restructure boards freely; positions in note YAML self-heal on the next render.

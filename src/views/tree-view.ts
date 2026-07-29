@@ -3,6 +3,7 @@ import { TaskTreeView, VIEW_TYPE_KANBAN, VIEW_TYPE_TREE } from "./base-view.ts";
 import type { BoardModel } from "../board-controller.ts";
 import {
 	addChildTask,
+	addRootTask,
 	addSiblingTask,
 	addTagTask,
 	clearOverride,
@@ -20,12 +21,14 @@ import type { TaskNode, TreeLayout } from "../model/types.ts";
 import type TaskTreePlugin from "../main.ts";
 import {
 	createDependencyBadge,
+	createNoteProgressBadge,
 	createOverrideBadge,
 	createProgressBadge,
 	createStatusChip,
 	dependencyInfo,
 	placementColumn,
 	renderTaskText,
+	roleIcon,
 	taskDisplayText,
 } from "./card.ts";
 import { canonicalStatusForRole } from "../columns.ts";
@@ -45,6 +48,8 @@ export class TreeView extends TaskTreeView {
 	private inverted = false;
 	private columnPath: string[] = [];
 	private byId = new Map<string, TaskNode>();
+	/** Row to re-focus after a keyboard action re-rendered the tree (fold, toggle). */
+	private pendingFocusId: string | null = null;
 	private draggingId: string | null = null;
 	private dragForbidden: Set<string> | null = null; // dragged node + its subtree, computed once per drag
 	private hintEl: HTMLElement | null = null; // the row currently showing a drop hint
@@ -190,6 +195,11 @@ export class TreeView extends TaskTreeView {
 		}
 		if (focusNode) this.renderFocusBar(scroll, focusNode, model);
 
+		if (roots.length === 0) {
+			this.renderEmptyBoard(scroll, model);
+			return;
+		}
+
 		if (this.layout === "diagram") {
 			this.renderDiagram(scroll, roots, model);
 		} else if (this.layout === "columns") {
@@ -252,6 +262,7 @@ export class TreeView extends TaskTreeView {
 		const meta = host.createDiv({ cls: "tt-node-meta" });
 		createStatusChip(meta, node, model.columns);
 		createProgressBadge(meta, node);
+		createNoteProgressBadge(meta, node);
 		if (node.override) createOverrideBadge(meta, node.override);
 		createDependencyBadge(meta, node, dependencyInfo(node, model.graph));
 		if (node.hasBlockedDescendant) {
@@ -302,7 +313,10 @@ export class TreeView extends TaskTreeView {
 		rootUl.dataset.parentId = "";
 		rootUl.dataset.parentDepth = "-1";
 		rootUl.dataset.parentLine = String(model.bodyStart - 1);
+		rootUl.setAttribute("role", "tree");
+		rootUl.setAttribute("aria-label", "Tasks");
 		for (const node of roots) this.renderListNode(rootUl, node, model);
+		this.wireListKeyboard(rootUl, model);
 	}
 
 	private renderListNode(ul: HTMLElement, node: TaskNode, model: BoardModel): void {
@@ -312,8 +326,14 @@ export class TreeView extends TaskTreeView {
 		li.dataset.subtreeEnd = String(node.lastDescLine);
 		li.dataset.depth = String(node.depth);
 		li.setAttribute("data-status", node.statusChar); // not `data-task`: Obsidian core styles that attr
+		li.setAttribute("role", "none"); // the ROW is the treeitem; the li is just structure
 
 		const row = li.createDiv({ cls: "tt-row" });
+		row.setAttribute("role", "treeitem");
+		row.setAttribute("aria-level", String(node.depth + 1));
+		if (node.children.length > 0) row.setAttribute("aria-expanded", String(!this.collapsed.has(node.id)));
+		// Roving tabindex: the tree is ONE tab stop, the arrows do the walking.
+		row.tabIndex = -1;
 		this.buildRowContent(row, node, model, {
 			toggle: "collapse",
 			editTrigger: "click",
@@ -324,8 +344,104 @@ export class TreeView extends TaskTreeView {
 			childUl.dataset.parentId = node.id;
 			childUl.dataset.parentDepth = String(node.depth);
 			childUl.dataset.parentLine = String(node.line);
+			childUl.setAttribute("role", "group");
 			for (const child of node.children) this.renderListNode(childUl, child, model);
 		}
+	}
+
+	/** The row element for a task id, within one rendered list. */
+	private rowFor(rootUl: HTMLElement, id: string): HTMLElement | null {
+		return rootUl.querySelector<HTMLElement>(`.tt-node[data-id="${CSS.escape(id)}"] > .tt-row`);
+	}
+
+	/**
+	 * The keyboard path — the one thing the views had no answer for. Arrows walk the
+	 * visible rows, ← / → fold and unfold, Enter edits in place, Space toggles done.
+	 * Actions that rewrite the file re-render, so the row to land on afterwards is
+	 * remembered in `pendingFocusId` and re-focused on the way back.
+	 */
+	private wireListKeyboard(rootUl: HTMLElement, model: BoardModel): void {
+		const visibleRows = (): HTMLElement[] => Array.from(rootUl.querySelectorAll<HTMLElement>(".tt-row"));
+
+		const wanted = this.pendingFocusId;
+		this.pendingFocusId = null;
+		const landing = (wanted ? this.rowFor(rootUl, wanted) : null) ?? visibleRows()[0];
+		if (landing) {
+			landing.tabIndex = 0;
+			if (wanted) landing.focus();
+		}
+
+		this.registerDomEvent(rootUl, "keydown", (e: KeyboardEvent) => {
+			const el = e.target as HTMLElement | null;
+			// While an inline edit is open the input owns every key, Escape included.
+			// `instanceOf` rather than `instanceof`: a popped-out window has its own
+			// HTMLInputElement, and the bare operator would miss it.
+			if (!el || el.instanceOf(HTMLInputElement) || el.instanceOf(HTMLTextAreaElement)) return;
+			const row = el.closest<HTMLElement>(".tt-row");
+			if (!row || !rootUl.contains(row)) return;
+			const node = this.byId.get(row.parentElement?.dataset.id ?? "");
+			if (!node) return;
+
+			const rows = visibleRows();
+			const idx = rows.indexOf(row);
+			const moveTo = (to: HTMLElement | null | undefined): void => {
+				if (!to) return;
+				e.preventDefault();
+				row.tabIndex = -1;
+				to.tabIndex = 0;
+				to.focus();
+				to.scrollIntoView({ block: "nearest" });
+			};
+			const fold = (): void => {
+				e.preventDefault();
+				this.pendingFocusId = node.id; // come back to this row after the re-render
+				this.toggleCollapse(node.id);
+			};
+
+			switch (e.key) {
+				case "ArrowDown":
+					moveTo(rows[idx + 1]);
+					return;
+				case "ArrowUp":
+					moveTo(rows[idx - 1]);
+					return;
+				case "ArrowRight":
+					// Closed branch opens; anything else steps to the next row.
+					if (node.children.length > 0 && this.collapsed.has(node.id)) fold();
+					else moveTo(rows[idx + 1]);
+					return;
+				case "ArrowLeft":
+					// Open branch closes; a leaf climbs to its parent.
+					if (node.children.length > 0 && !this.collapsed.has(node.id)) fold();
+					else if (node.parentId) moveTo(this.rowFor(rootUl, node.parentId));
+					return;
+				case "Enter": {
+					const textEl = row.querySelector<HTMLElement>(".tt-node-text");
+					if (!textEl) return;
+					e.preventDefault();
+					this.startInlineEdit(textEl, node, model);
+					return;
+				}
+				case " ":
+					if (!node.isTask) return;
+					e.preventDefault(); // Space on a focusable div would page-scroll
+					this.pendingFocusId = node.id;
+					void this.cycle(node, model);
+					return;
+				default:
+					return;
+			}
+		});
+	}
+
+	/** A board with no tasks — a legitimate state now that the starter template can be empty. */
+	private renderEmptyBoard(scroll: HTMLElement, model: BoardModel): void {
+		const box = scroll.createDiv({ cls: "tt-empty-board" });
+		box.createDiv({ cls: "tt-empty-board-text", text: "No tasks on this board yet." });
+		const btn = box.createEl("button", { cls: "tt-btn tt-btn-cta", text: "Add the first task" });
+		this.registerDomEvent(btn, "click", () =>
+			void addRootTask(this.plugin, model).then((l) => this.queueEditAt(l)),
+		);
 	}
 
 	// ---- layout: diagram (horizontal tree) -----------------------------------
@@ -914,7 +1030,8 @@ export class TreeView extends TaskTreeView {
 			menu.addItem((i) =>
 				i
 					.setTitle(`Mark as ${col.name}`)
-					.setIcon("check")
+					// One glyph per role: five identical check marks read as one blur.
+					.setIcon(roleIcon(col.role))
 					.onClick(() => {
 						if (node.isLeaf) void writeStatus(this.plugin, model.file, node.line, col.status);
 						else if (col.role === node.derivedRole) void clearOverride(this.plugin, model.file, node.line);

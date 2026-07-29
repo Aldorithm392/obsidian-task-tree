@@ -223,6 +223,24 @@ contract:
   and queryable, never destructive. If the task comes back (undo), the next reconcile clears the
   marker.
 
+### Depth: checklists inside task-notes (read-only)
+
+A task-note may carry **its own** `- [ ]` checklists and link to further task-notes, which may do the
+same. The plugin walks that trail from each board task and reports what it finds as a badge:
+
+- **Scope is the gate.** Only files with `type: task-note` are visited. The board itself
+  (`type: task-tree`) is filtered out, which is also what stops the walk from climbing back up.
+- **Bounded.** Breadth-first with a visited set (cycles and diamonds count each note once), a depth
+  cap (setting, default 3 levels) and a hard note budget. A `+` on the badge means the walk stopped
+  early — there is more below than the number shows.
+- **Counting matches roll-up's rule**: cancelled items are excluded from the denominator.
+- **Read-only, in both directions.** No board status character changes because of a note, and no
+  checkbox inside a note changes because of the board. Roll-up never sees this signal — a board file
+  stays recomputable from itself alone, exactly like `tt-blocked-by`.
+
+This is what lets the board stay at the altitude a human thinks at while the real grain of the work
+lives in the notes: nothing has to be flattened onto the board to be counted.
+
 Machine-readable field tables live in [`agent/CONTRACT.md`](agent/CONTRACT.md), which is
 conformance-tested against the parser.
 

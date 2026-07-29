@@ -50,6 +50,16 @@ Flip the leaf's char to `x` (Operation B: exactly that character, nothing else o
 Then recompute the ancestors and tell the user what changed: "*Staging box* done → *Infrastructure*
 2/2 → its override is now redundant" or "*QA pass* released *Announcement post*'s dependency."
 
+### Record detail without cluttering the board
+A task's own note (its **trailing** `[[wikilink]]`, `type: task-note`) can hold its own `- [ ]`
+checklists and link to further task-notes. The plugin follows that trail and badges the board task
+with what it finds — read-only: roll-up never sees it and no status character changes because of
+it. So when a task needs fine-grained steps that the human doesn't want on the board, put them in
+the note as checklists. They stay visible as depth instead of disappearing into prose.
+
+When reporting, say where the work lives: "*Migration* reads 1/3 on the board, and its note carries
+7 more open items across two linked notes."
+
 ### Wire a dependency
 Append `[tt-blocked-by:: <target-id>]` before the task's trailing `^id` (comma-separate multiple
 ids). Targets are bare block ids on the same board. Check you're not creating a cycle.

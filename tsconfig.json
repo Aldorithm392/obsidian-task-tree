@@ -1,6 +1,6 @@
 {
 	"compilerOptions": {
-		"baseUrl": ".",
+		// No `baseUrl`: every import here is relative, and TS 7 drops the option anyway.
 		"module": "ESNext",
 		"target": "ES2021",
 		"moduleResolution": "bundler",

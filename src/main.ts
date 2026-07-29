@@ -1,4 +1,4 @@
-import { FuzzySuggestModal, Notice, Plugin, TFile, normalizePath, type App } from "obsidian";
+import { Notice, Plugin, TFile, normalizePath, type App } from "obsidian";
 import { DEFAULT_SETTINGS, TaskTreeSettingTab, type TaskTreeSettings } from "./settings.ts";
 import { KanbanView } from "./views/kanban-view.ts";
 import { TreeView } from "./views/tree-view.ts";
@@ -8,7 +8,7 @@ import { appendLogEntry, buildIndexMd, isManagedFrontmatter, MANAGED_TYPE } from
 import { assignIdsInText } from "./model/writer.ts";
 import { createBoardFile, reconcileBoardNotes } from "./board-controller.ts";
 import { ensureAgentInstructions } from "./agent-setup.ts";
-import { confirmModal, promptText } from "./views/modals.ts";
+import { AccentFuzzyModal, confirmModal, promptText } from "./views/modals.ts";
 
 export default class TaskTreePlugin extends Plugin {
 	settings: TaskTreeSettings = DEFAULT_SETTINGS;
@@ -84,6 +84,18 @@ export default class TaskTreePlugin extends Plugin {
 				}),
 		});
 		this.addCommand({
+			id: "add-task",
+			name: "Add a task to the open board",
+			// Bindable to a hotkey: capture without reaching for the mouse, which is half
+			// of the keyboard-only path (the tree's arrow navigation is the other half).
+			checkCallback: (checking) => {
+				const view = this.openBoardView();
+				if (!view) return false;
+				if (!checking) void view.addTaskFromCommand();
+				return true;
+			},
+		});
+		this.addCommand({
 			id: "open-picker",
 			name: "Open a board…",
 			callback: () => new BoardPicker(this.app, this).open(),
@@ -153,6 +165,21 @@ export default class TaskTreePlugin extends Plugin {
 			this.settings.agentInstructions = "off";
 			await this.saveSettings();
 		}
+	}
+
+	/**
+	 * The Task Tree view a command should act on: the focused one if the user is in it,
+	 * otherwise the first one open anywhere (a tree parked in a sidebar still counts).
+	 */
+	private openBoardView(): TaskTreeView | null {
+		const active = this.app.workspace.getActiveViewOfType(TreeView) ?? this.app.workspace.getActiveViewOfType(KanbanView);
+		if (active?.filePath) return active;
+		for (const type of [VIEW_TYPE_TREE, VIEW_TYPE_DASHBOARD, VIEW_TYPE_KANBAN]) {
+			for (const leaf of this.app.workspace.getLeavesOfType(type)) {
+				if (leaf.view instanceof TaskTreeView && leaf.view.filePath) return leaf.view;
+			}
+		}
+		return null;
 	}
 
 	/** Every managed board in the vault (frontmatter `type: task-tree`). */
@@ -240,7 +267,9 @@ export default class TaskTreePlugin extends Plugin {
 	}
 
 	refreshViews(): void {
-		for (const type of [VIEW_TYPE_KANBAN, VIEW_TYPE_TREE]) {
+		// Dashboard included: it has its own view type, so it used to sit out every
+		// settings change and keep rendering stale badges and counts.
+		for (const type of [VIEW_TYPE_KANBAN, VIEW_TYPE_TREE, VIEW_TYPE_DASHBOARD]) {
 			for (const leaf of this.app.workspace.getLeavesOfType(type)) {
 				const view = leaf.view;
 				if (view instanceof TaskTreeView) void view.render();
@@ -337,7 +366,7 @@ function relPath(fromDir: string, to: string): string {
 	return [...(Array(from.length - i).fill("..") as string[]), ...parts.slice(i)].join("/");
 }
 
-class BoardPicker extends FuzzySuggestModal<TFile> {
+class BoardPicker extends AccentFuzzyModal<TFile> {
 	private plugin: TaskTreePlugin;
 
 	constructor(app: App, plugin: TaskTreePlugin) {

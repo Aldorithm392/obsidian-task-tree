@@ -69,6 +69,15 @@ To find what holds a task up: collect its `tt-blocked-by` ids, look up those tas
 check their effective roles. `done`/`cancelled` release the edge. Report unknown ids rather than
 deleting them. Don't create cycles.
 
+## Depth: checklists inside task-notes
+
+A task's own note may carry its own `- [ ]` checklists and link to further `type: task-note` notes,
+which may do the same. The plugin follows that trail and badges the board task with the progress it
+finds — a **separate, read-only signal**: it never changes a status character, and roll-up never
+sees it. So writing detail as checklists inside a task-note is safe and visible; it does not need
+to be flattened onto the board to count. Keep the board at the altitude the human thinks at, and
+put the fine grain in the note.
+
 ## Division of labor with the human
 
 - **The human owns intent and structure**: what the project is, how it decomposes, what gets

@@ -29,9 +29,18 @@ import {
 	collectBlockers,
 	collectDependencyBlocked,
 	collectNextUp,
+	collectNoteWork,
 	markBlockedPaths,
 	resolveEdges,
 } from "../src/model/insights.ts";
+import { pendingNoteWork, walkNoteProgress } from "../src/model/noteprogress.ts";
+import { displayForm, foldDiacritics } from "../src/model/fuzzy.ts";
+import {
+	parseNoteSections,
+	parseStarterTasks,
+	renderNoteSections,
+	renderStarterTasks,
+} from "../src/model/templates.ts";
 
 // ---- tiny test runner --------------------------------------------------------
 let passed = 0;
@@ -668,6 +677,188 @@ test("noteFieldsDrift: missing frontmatter drifts everything; in-sync drifts not
 	assert.equal(noteFieldsDrift(undefined, expected).length, 5);
 	const inSync = { title: "T", parent: "(root)", depth: 0, distance_to_main: 0, path: "T" };
 	assert.deepEqual(noteFieldsDrift(inSync, expected), []);
+});
+
+// ---- recursive note progress (v1.1) -----------------------------------------
+console.log("note progress (linked notes)");
+
+/** Build a `read` from a plain {path: {roles, links}} map, counting the reads. */
+function noteReader(web) {
+	const reads = [];
+	const read = (path) => {
+		reads.push(path);
+		return web[path] ?? null;
+	};
+	read.reads = reads;
+	return read;
+}
+
+test("a task's own note contributes its checklist, cancelled items excluded", () => {
+	const read = noteReader({
+		"Tasks/Hotel.md": { roles: ["done", "todo", "doing", "cancelled"], links: [] },
+	});
+	const p = walkNoteProgress("Tasks/Hotel.md", read, { maxDepth: 3 });
+	assert.equal(p.done, 1);
+	assert.equal(p.total, 3); // cancelled is out of the denominator, as in roll-up
+	assert.equal(p.notes, 1);
+	assert.equal(p.depth, 1);
+	assert.equal(p.truncated, false);
+});
+test("the walk descends into linked task-notes and rolls their checklists up", () => {
+	const read = noteReader({
+		"A.md": { roles: ["done"], links: ["B.md"] },
+		"B.md": { roles: ["todo", "todo"], links: ["C.md"] },
+		"C.md": { roles: ["done", "todo"], links: [] },
+	});
+	const p = walkNoteProgress("A.md", read, { maxDepth: 3 });
+	assert.equal(p.total, 5);
+	assert.equal(p.done, 2);
+	assert.equal(p.notes, 3);
+	assert.equal(p.depth, 3);
+	assert.equal(p.truncated, false);
+});
+test("an unresolvable root note yields no signal at all", () => {
+	assert.equal(walkNoteProgress("Nope.md", noteReader({}), { maxDepth: 3 }), null);
+});
+test("a cycle between notes terminates and counts each note exactly once", () => {
+	const read = noteReader({
+		"A.md": { roles: ["todo"], links: ["B.md"] },
+		"B.md": { roles: ["todo"], links: ["A.md", "B.md"] },
+	});
+	const p = walkNoteProgress("A.md", read, { maxDepth: 10 });
+	assert.equal(p.total, 2);
+	assert.equal(p.notes, 2);
+	assert.equal(read.reads.filter((r) => r === "A.md").length, 1);
+});
+test("a diamond counts the shared note once, not twice", () => {
+	const read = noteReader({
+		"A.md": { roles: [], links: ["B.md", "C.md"] },
+		"B.md": { roles: ["todo"], links: ["D.md"] },
+		"C.md": { roles: ["todo"], links: ["D.md"] },
+		"D.md": { roles: ["todo", "todo"], links: [] },
+	});
+	const p = walkNoteProgress("A.md", read, { maxDepth: 5 });
+	assert.equal(p.notes, 4);
+	assert.equal(p.total, 4);
+});
+test("the depth cap stops the walk and says so", () => {
+	const read = noteReader({
+		"A.md": { roles: ["todo"], links: ["B.md"] },
+		"B.md": { roles: ["todo"], links: [] },
+	});
+	const shallow = walkNoteProgress("A.md", read, { maxDepth: 1 });
+	assert.equal(shallow.total, 1);
+	assert.equal(shallow.notes, 1);
+	assert.equal(shallow.truncated, true); // there IS more below
+	assert.equal(read.reads.includes("B.md"), false); // and we never even read it
+
+	const deep = walkNoteProgress("A.md", read, { maxDepth: 2 });
+	assert.equal(deep.total, 2);
+	assert.equal(deep.truncated, false);
+});
+test("the note budget stops a runaway link web", () => {
+	const web = {};
+	for (let i = 0; i < 30; i++) web[`n${i}.md`] = { roles: ["todo"], links: [`n${i + 1}.md`] };
+	const p = walkNoteProgress("n0.md", noteReader(web), { maxDepth: 50, maxNotes: 5 });
+	assert.equal(p.truncated, true);
+	assert.ok(p.notes <= 5, `visited ${p.notes} notes with a budget of 5`);
+});
+test("pendingNoteWork is the open remainder, and 0 when there is no signal", () => {
+	assert.equal(pendingNoteWork({ done: 2, total: 7, notes: 1, depth: 1, truncated: false }), 5);
+	assert.equal(pendingNoteWork(undefined), 0);
+});
+test("note progress never touches roll-up", () => {
+	const lines = ["- [ ] Parent", "\t- [x] Child"];
+	const roots = parse(lines);
+	// A parent whose only child is done rolls up to done; hanging an unfinished note
+	// off it must not change that — the file stays recomputable from the file.
+	roots[0].noteProgress = { done: 0, total: 9, notes: 3, depth: 2, truncated: false };
+	computeRollup(roots, ROLLUP_OPTS);
+	assert.equal(roots[0].effectiveRole, "done");
+});
+test("collectNoteWork surfaces only tasks with unfinished note work, biggest pile first", () => {
+	const lines = ["- [ ] Alpha", "- [ ] Beta", "- [ ] Gamma"];
+	const roots = parse(lines);
+	roots[0].noteProgress = { done: 1, total: 3, notes: 1, depth: 1, truncated: false }; // 2 open
+	roots[1].noteProgress = { done: 4, total: 4, notes: 1, depth: 1, truncated: false }; // none open
+	roots[2].noteProgress = { done: 0, total: 6, notes: 2, depth: 2, truncated: false }; // 6 open
+	const work = collectNoteWork(roots);
+	assert.deepEqual(
+		work.map((w) => w.node.text),
+		["Gamma", "Alpha"],
+	);
+});
+
+// ---- accent-insensitive matching --------------------------------------------
+console.log("accent folding");
+test("folding strips accents so 'dia' can find 'día'", () => {
+	assert.equal(foldDiacritics("día"), "dia");
+	assert.equal(foldDiacritics("Añadir reseña"), "Anadir resena");
+	assert.equal(foldDiacritics("Über-Straße"), "Uber-Straße"); // ß is a letter, not an accent
+});
+test("folding preserves length, so match offsets still line up with the display text", () => {
+	for (const s of ["día", "Añadir reseña", "café", "plain ascii", "🙂 emoji", "한국어", ""]) {
+		assert.equal(
+			foldDiacritics(s).length,
+			displayForm(s).length,
+			`length changed for ${JSON.stringify(s)}`,
+		);
+	}
+});
+test("a decomposed and a precomposed spelling fold to the same thing", () => {
+	const precomposed = "caf\u00e9"; // é as a single code point
+	const decomposed = "cafe\u0301"; // e + combining acute
+	assert.notEqual(precomposed, decomposed); // genuinely different strings…
+	assert.equal(foldDiacritics(precomposed), "cafe");
+	assert.equal(foldDiacritics(decomposed), "cafe"); // …that a single query finds
+});
+test("folding leaves scripts whose decomposition is real letters alone", () => {
+	assert.equal(foldDiacritics("한국어"), "한국어"); // not reduced to its jamo
+	assert.equal(foldDiacritics("日本語"), "日本語");
+});
+test("folding is a no-op on text that has nothing to fold", () => {
+	assert.equal(foldDiacritics("Website redesign 2026"), "Website redesign 2026");
+});
+
+// ---- generated-text templates -----------------------------------------------
+console.log("templates");
+test("starter tasks nest by indentation, tabs or spaces", () => {
+	assert.deepEqual(parseStarterTasks("First task\n\tA subtask\nSecond task"), [
+		{ depth: 0, text: "First task" },
+		{ depth: 1, text: "A subtask" },
+		{ depth: 0, text: "Second task" },
+	]);
+	assert.deepEqual(parseStarterTasks("Uno\n  Dos\n    Tres"), [
+		{ depth: 0, text: "Uno" },
+		{ depth: 1, text: "Dos" },
+		{ depth: 2, text: "Tres" },
+	]);
+});
+test("an over-indented line lands as a child, never as an orphan", () => {
+	assert.deepEqual(parseStarterTasks("Root\n\t\t\t\tWay too deep"), [
+		{ depth: 0, text: "Root" },
+		{ depth: 1, text: "Way too deep" },
+	]);
+	assert.deepEqual(parseStarterTasks("\t\tIndented first line"), [{ depth: 0, text: "Indented first line" }]);
+});
+test("an empty starter template means a board with no tasks", () => {
+	assert.deepEqual(parseStarterTasks(""), []);
+	assert.deepEqual(parseStarterTasks("\n  \n\t\n"), []);
+	assert.deepEqual(renderStarterTasks("", "\t"), []);
+});
+test("starter tasks render as task lines in the file's own indent style", () => {
+	assert.deepEqual(renderStarterTasks("A\n\tB", "\t"), ["- [ ] A", "\t- [ ] B"]);
+	assert.deepEqual(renderStarterTasks("A\n\tB", "    "), ["- [ ] A", "    - [ ] B"]);
+});
+test("note sections split on commas or newlines and tolerate a written-out heading", () => {
+	assert.deepEqual(parseNoteSections("Progress, Status, Notes"), ["Progress", "Status", "Notes"]);
+	assert.deepEqual(parseNoteSections("Avance\nEstado"), ["Avance", "Estado"]);
+	assert.deepEqual(parseNoteSections("## Progreso, Notas"), ["Progreso", "Notas"]);
+	assert.deepEqual(parseNoteSections("  ,  , "), []);
+});
+test("note sections render as headings with a blank line to write under", () => {
+	assert.deepEqual(renderNoteSections("Avance, Notas"), ["## Avance", "", "## Notas", ""]);
+	assert.deepEqual(renderNoteSections(""), []);
 });
 
 // ---- summary -----------------------------------------------------------------

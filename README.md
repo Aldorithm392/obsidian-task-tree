@@ -152,6 +152,26 @@ tasks (you, the plugin, or an AI editing the raw Markdown). Deleting a task mark
 `task_status: orphaned` (undo clears it); the note's *content* is never touched. A "Resync all
 task-note frontmatter" command exists as a manual escape hatch.
 
+### Depth: the work inside your notes counts too
+
+A task-note can hold **its own** checklists, and link to further task-notes that hold theirs. Task
+Tree follows that trail and badges the board task with what it finds — `3/11` on *Migration* means
+eleven checklist items live in its note and the notes below it, three of them done. A `+` means the
+walk hit its depth limit and there is more further down.
+
+It is deliberately a **separate, read-only signal**: it never ticks a checkbox, never changes a
+status character, and never feeds roll-up — so every board file stays recomputable from itself
+alone. What it buys you is that you no longer have to choose between a board that's honest and a
+board that's readable. Keep the board at the altitude you think at; write the fine grain in the
+note; see the real size of it either way. The dashboard's **"Open inside linked notes"** section
+lists the biggest hidden piles first. Depth and on/off are in **Settings → Task Tree**.
+
+### Keyboard
+
+The tree is one tab stop; from there **↑ ↓** walk the visible rows, **← →** fold and unfold,
+**Enter** edits a task in place, and **Space** toggles it done. The **"Add a task to the open
+board"** command takes a hotkey, so capture never needs the mouse.
+
 ---
 
 ## Quickstart
@@ -175,6 +195,7 @@ Obsidian/Tasks convention.
 - Create a new board
 - Convert current file to a board
 - Assign block IDs to all tasks in current file
+- Add a task to the open board (bind a hotkey — keyboard capture)
 - Open a board… (picker)
 - Build the boards index (`index.md`)
 - Append an entry to the boards log (`log.md`)
