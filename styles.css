@@ -1033,3 +1033,12 @@ h2.tt-dash-title {
 	resize: vertical;
 	white-space: pre;
 }
+
+/* An unmapped status character: shown as itself, because the role behind it is a guess.
+   Dashed, not red — this is "nothing claims this", not "something is wrong". */
+.tt-chip.is-unmapped {
+	background: transparent;
+	border: 1px dashed var(--text-faint);
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}

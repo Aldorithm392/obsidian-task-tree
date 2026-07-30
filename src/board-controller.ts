@@ -5,10 +5,15 @@ import { buildTree, flatten } from "./model/parser.ts";
 import { computeRollup } from "./model/rollup.ts";
 import { markBlockedPaths, resolveEdges, type EdgeGraph } from "./model/insights.ts";
 import { columnsFromFrontmatter, isTaskNoteFrontmatter } from "./model/okf.ts";
-import { expectedNoteFields, noteFieldsDrift, type ExpectedNoteFields } from "./model/notemeta.ts";
+import {
+	expectedNoteFields,
+	noteFieldsDrift,
+	retiredFieldsPresent,
+	type ExpectedNoteFields,
+} from "./model/notemeta.ts";
 import { walkNoteProgress, type NoteSnapshot } from "./model/noteprogress.ts";
 import { renderNoteSections, renderStarterTasks } from "./model/templates.ts";
-import { roleForStatus } from "./columns.ts";
+import { deviatesFromPublished, roleForStatus } from "./columns.ts";
 import { FROZEN, getIndentUnit } from "./settings.ts";
 import {
 	addTagInText,
@@ -122,6 +127,33 @@ export async function loadBoard(
 	}
 
 	return model;
+}
+
+/**
+ * Make the board say what its own status characters mean. Returns true if it wrote.
+ *
+ * This closes the biggest hole in the third commitment. `columnsFromFrontmatter` falls back
+ * to the vault-global setting, so a board whose author remapped `[/]` carried that meaning
+ * in `.obsidian/plugins/task-tree/data.json` and nowhere else: open the same file on another
+ * machine and the characters meant something different, and an AI agent reading the raw
+ * Markdown — the audience this format exists for — had nothing to read at all. The contract
+ * we install into users' vaults even tells agents "check `tt_columns` first", which was
+ * advice to check a key nothing ever wrote.
+ *
+ * Only stamped when the mapping actually deviates from the PUBLISHED table, so the common
+ * setup writes nothing and no board gains YAML it doesn't need. Once stamped, the board owns
+ * its meaning — later changes to the vault default deliberately do not reach back into it.
+ */
+export async function ensureBoardColumns(plugin: TaskTreePlugin, file: TFile): Promise<boolean> {
+	const fm = plugin.app.metadataCache.getFileCache(file)?.frontmatter;
+	if (fm && "tt_columns" in fm) return false; // the board already speaks for itself
+	const columns = plugin.settings.columns;
+	if (!deviatesFromPublished(columns)) return false; // the published table already says this
+
+	await plugin.app.fileManager.processFrontMatter(file, (front: Record<string, unknown>) => {
+		front["tt_columns"] = columns.map((c) => ({ name: c.name, status: c.status, role: c.role }));
+	});
+	return true;
 }
 
 /** Assign a stable ^id to every task that lacks one. Returns true if it wrote. */
@@ -384,9 +416,7 @@ function taskNoteContent(
 	// string values so a colon/quote/bracket in a title can't break the YAML.
 	const expected = expectedNoteFields({
 		title: stripLinks(node.text) || noteName,
-		path: meta.path.map(stripLinks),
 		parentTitle: meta.parentText ? stripLinks(meta.parentText) : null,
-		depth: meta.depth,
 		boardName,
 	});
 	const lines = [
@@ -395,9 +425,6 @@ function taskNoteContent(
 		`title: ${JSON.stringify(expected.title)}`,
 		`board: "[[${boardName}]]"`,
 		`parent: ${JSON.stringify(expected.parent)}`,
-		`depth: ${expected.depth}`,
-		`distance_to_main: ${expected.distance_to_main}`,
-		`path: ${JSON.stringify(expected.path)}`,
 	];
 	if (node.hasStoredId) lines.push(`task_id: ${node.id}`);
 	// No body H1: Obsidian's inline title already shows the note name — an H1 would
@@ -547,9 +574,7 @@ function expectedFieldsFor(node: TaskNode, byId: Map<string, TaskNode>, noteBase
 	const meta = nodeMeta(node, byId);
 	return expectedNoteFields({
 		title: stripLinks(node.text) || noteBasename,
-		path: meta.path.map(stripLinks),
 		parentTitle: meta.parentText ? stripLinks(meta.parentText) : null,
-		depth: meta.depth,
 		boardName: "", // board handled by resolution, not by string compare
 	});
 }
@@ -611,10 +636,15 @@ export async function reconcileModelNotes(plugin: TaskTreePlugin, model: BoardMo
 		const boardDrifted = resolved?.path !== model.file.path;
 
 		const orphanStale = cached?.["task_status"] === "orphaned";
-		if (drift.length === 0 && !boardDrifted && !orphanStale) continue;
+		// One-time migration: depth / distance_to_main / path are no longer maintained, and
+		// leaving them behind would let them rot with nothing marking them stale — worse than
+		// the disease. The reconcile that stopped writing them removes them instead.
+		const retired = retiredFieldsPresent(cached);
+		if (drift.length === 0 && !boardDrifted && !orphanStale && retired.length === 0) continue;
 
 		await plugin.app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
 			for (const k of drift) fm[k] = expected[k as keyof ExpectedNoteFields];
+			for (const k of retired) delete fm[k];
 			if (boardDrifted) fm["board"] = `[[${model.file.basename}]]`;
 			if (orphanStale) delete fm["task_status"]; // the task is back on the board
 		});

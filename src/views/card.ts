@@ -96,6 +96,19 @@ export function placementColumn(node: TaskNode, columns: ColumnDef[]): ColumnDef
 }
 
 export function createStatusChip(parent: HTMLElement, node: TaskNode, columns: ColumnDef[]): HTMLElement {
+	// A leaf whose character nothing claimed shows the character itself. The role behind it
+	// is a fallback guess, and a guess rendered as a confident label is how a board comes to
+	// say something its author never wrote. Naming it makes it a one-click fix instead.
+	if (node.isTask && node.isLeaf && !node.statusMapped) {
+		const chip = parent.createSpan({ cls: "tt-chip is-unmapped", text: `[${node.statusChar}] unmapped` });
+		chip.setAttribute("data-role", node.effectiveRole);
+		chip.setAttribute(
+			"aria-label",
+			`No column claims "${node.statusChar}", and it isn't one of the published characters — ` +
+				`reading it as ${roleLabel(node.effectiveRole)}. Add a column for it, or change the character.`,
+		);
+		return chip;
+	}
 	const col = columnForRole(node.effectiveRole, columns);
 	const chip = parent.createSpan({
 		cls: "tt-chip",

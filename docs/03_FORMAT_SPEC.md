@@ -45,9 +45,8 @@ type: task-tree            # REQUIRED — the opt-in gate
 title: Website Redesign    # SHOULD (OKF) — display name
 description: Q3 rebuild.    # SHOULD (OKF) — one sentence
 tags: [project, marketing] # MAY (OKF)
-timestamp: 2026-07-19T14:30:00Z  # MAY (OKF) — ISO 8601; plugin maintains it only if you opt in
-tt_rollup: derive          # MAY — derive | off (default derive); present only when non-default
-tt_columns:                # REQUIRED only when the board deviates from the vault default columns
+timestamp: 2026-07-19T14:30:00Z  # MAY (OKF) — ISO 8601; yours to maintain, the plugin never writes it
+tt_columns:                # REQUIRED when the board deviates from the PUBLISHED table below
   - { name: To Do,   status: " ", role: todo }
   - { name: Doing,   status: "/", role: doing }
   - { name: Blocked, status: "!", role: blocked }
@@ -55,8 +54,14 @@ tt_columns:                # REQUIRED only when the board deviates from the vaul
 ---
 ```
 
-- Task Tree reads/writes only the `tt_*` keys and (optionally) `timestamp`. Every other key —
-  yours or another tool's — MUST be preserved on round-trip.
+- Task Tree reads/writes only the `tt_*` keys. Every other key — yours or another tool's — MUST be
+  preserved on round-trip.
+- **`tt_columns` is compared against the published table, never against the reader's settings.**
+  Comparing a board to the reader's own configuration is circular: a board could match its author's
+  setup perfectly and still be unreadable to anyone else, which is exactly the bug this rule fixes.
+  The plugin stamps it automatically, once, the first time a deviating board renders. A board that
+  uses only published characters needs nothing — that is why most boards carry no `tt_columns`.
+  Once stamped, the board owns its meaning: later changes to a vault default do not reach back in.
 - **Format/spec version markers are NOT stamped into board files.** They are documentation, not
   user data (that decision is intentional — see [`ROADMAP.md`](../ROADMAP.md)).
 
@@ -71,9 +76,13 @@ universal Obsidian/Tasks convention, so a board that declares nothing is still s
 | Doing  | `/`         | `doing` |
 | Done   | `x` (also `X`) | `done` |
 
-A board that uses any non-default column/status (e.g. `Blocked → !`) MUST declare its full
-`tt_columns` in frontmatter — that is how a non-standard board *announces itself* so it reads the
-same on any machine, with or without the plugin.
+Two more characters are **published** and always mean what they say, even on a board whose columns
+don't list them: `-` = `cancelled` and `!` = `blocked`. So adding a Blocked or Cancelled column
+changes nothing about how the file reads, and needs no declaration.
+
+A board that gives a character a *different* meaning — or uses one this table doesn't name — MUST
+declare its full `tt_columns`. That is how a non-standard board *announces itself* so it reads the
+same on any machine, with or without the plugin. The plugin writes it for you, once.
 
 Every column carries a **role**: `todo | doing | done | cancelled | blocked`. Column names and
 characters may change; **roles are the stable contract** that roll-up and overrides consume.
@@ -96,15 +105,14 @@ Example (one tab per depth level):
 
 - **Indentation MUST be one consistent unit per level; TAB is recommended.** Obsidian resolves
   nesting from its metadata cache regardless of width, but *writing* moved lines needs one unit — a
-  tab is exactly one level, with no 2-vs-4-space ambiguity. The plugin follows the vault's editor
-  indent setting; a `spaces` mode is configurable.
+  tab is exactly one level, with no 2-vs-4-space ambiguity. The plugin **detects** the unit a file
+  already uses and matches it; a tab is only its starting point for a board with no nesting yet.
 - **Marker** is `-`, `*`, or `+` (preserved on rewrite).
 - **Status character** is the single char in `[ ]`. `" "` = incomplete; any other char = a status
   symbol. Matched against `tt_columns`; `x`/`X` are equivalent.
-- **Block id `^<id>`** MUST be the last token on the line. Default scheme `^t-<6 base36>`
-  (prefix/length configurable). Existing ids are adopted, never regenerated — this is what lets a
-  subtree move (Operation A) without breaking links or the override marker. With auto-assign on
-  (default), every task in a managed board gets one, written once as a guarded batch.
+- **Block id `^<id>`** MUST be the last token on the line. Scheme `^t-<6 base36>`. Existing ids are
+  adopted, never regenerated — this is what lets a subtree move (Operation A) without breaking links
+  or the override marker. Every task in a managed board gets one, written once as a guarded batch.
 - **Overrides** use the inline field `[tt-override:: <role>]`, placed before the block id (§4).
 - **Dependencies** use the inline field `[tt-blocked-by:: <id>, <id>…]`, placed before the block id
   (§4b). Values are bare block ids (no `^`), same board only.
@@ -144,8 +152,8 @@ progress(node) = (active that are done) / (active)      # rendered, NEVER writte
 | Non-task bullets (`- note`) | Ignored for roll-up, preserved verbatim (structural notes). |
 | Some children cancelled | Excluded from the denominator; rest-done ⇒ parent `done`. |
 | All children cancelled | Parent derives `cancelled`. |
-| Blocked child | Counted active; surfaces `blocked` to the parent (toggle in settings). |
-| Unknown status char | Falls back to the configured *unknown role* (default `doing`) — active, never `done`. |
+| Blocked child | Counted active; surfaces `blocked` to the parent. |
+| Unknown status char | A character nothing claims — not the board's columns, not the published table — reads as `doing`: active, never `done`. The views mark it as unmapped rather than applying the guess silently. |
 | Deeper trees | A parent sees its children's *effective* roles, not grandchildren — associative & reproducible. |
 
 ---
@@ -211,14 +219,20 @@ contract:
 
 - A task's own note is its **trailing** `[[wikilink]]`; a link earlier in the text is an ordinary
   cross-reference. The plugin appends the link when it creates the note.
-- The note's frontmatter is **self-describing** so an agent can read where the task sits without
-  reconstructing the tree: `type: task-note`, `title`, `board` (link), `parent`, `depth`,
-  `distance_to_main`, `path`, `task_id`.
+- The note's frontmatter says what the note cannot work out about itself: `type: task-note`,
+  `title`, `board` (link), `parent`, `task_id`.
 - **These structural keys are plugin-managed and reconciled on every board render** — no matter who
-  restructured the board (the plugin, an AI agent editing the raw Markdown, or a hand edit),
-  positions self-heal. Hand edits to those keys are reconciled away; the note's *content* below the
+  restructured the board (the plugin, an AI agent editing the raw Markdown, or a hand edit), they
+  self-heal. Hand edits to those keys are reconciled away; the note's *content* below the
   frontmatter is never touched. The `board` link is validated by resolution, so moving the board (or
   the note) between folders causes no churn.
+- **`depth`, `distance_to_main` and `path` are NOT stored.** They were, and it was this document's
+  own interpretation principle inverted: they are pure derivations of the board, copied into files
+  the plugin does not own and kept true only by a background process. Delete the plugin and they do
+  not disappear — they start lying, silently, with nothing marking them stale. (`distance_to_main`
+  was also `depth` under a second name.) An agent that wants a task's depth or ancestry reads the
+  board, where they are facts rather than copies. Notes still carrying them are stripped on the next
+  reconcile.
 - Deleting a task stamps its note (and its subtree's notes) with `task_status: orphaned` — visible
   and queryable, never destructive. If the task comes back (undo), the next reconcile clears the
   marker.

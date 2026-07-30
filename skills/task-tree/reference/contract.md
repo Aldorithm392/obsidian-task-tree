@@ -92,16 +92,21 @@ shows that the work exists without absorbing it.
 |---|---|---|
 | `type: task-tree` | opt-in gate | human / plugin convert command |
 | `title` | project name; the plugin renames the file to match | plugin (rename) |
-| `tt_columns` | per-board column set `{ name, status, role, color?, wipLimit? }` | human |
-| `timestamp` | last-touch ISO time | plugin (optional setting, default off) |
+| `tt_columns` | per-board column set `{ name, status, role, color?, wipLimit? }` — **present whenever the board's char→role mapping differs from the table above**; when absent, that table applies | plugin (stamped once on deviation) / human |
+| `timestamp` | last-touch ISO time | human — the plugin never writes it |
 
 ## Frontmatter keys (task-note, plugin-managed)
 
-`type: task-note`, `title`, `board` (link), `parent`, `depth`, `distance_to_main`, `path`,
-`task_id`, `task_status` — **reconciled automatically every time the board renders**, no
-matter who restructured the board (the plugin, an agent, or a hand edit). Hand edits to
-these keys will be reconciled away; the note's *content* below the frontmatter is never
-touched. `task_status: orphaned` marks a note whose task was deleted from the board; the
+`type: task-note`, `title`, `board` (link), `parent`, `task_id`, `task_status` —
+**reconciled automatically every time the board renders**, no matter who restructured the
+board (the plugin, an agent, or a hand edit). Hand edits to these keys will be reconciled
+away; the note's *content* below the frontmatter is never touched.
+
+`depth`, `distance_to_main` and `path` were removed: they are pure derivations of the
+board, and a copy of a fact in a file the plugin does not own can only go stale. (
+`distance_to_main` was also `depth` under a second name.) Read depth and ancestry from the
+board, where they are facts rather than copies. Notes that still carry them get them
+stripped on the next reconcile. `task_status: orphaned` marks a note whose task was deleted from the board; the
 marker clears itself if the task comes back (undo). An agent may restructure boards
 freely — note positions self-heal.
 

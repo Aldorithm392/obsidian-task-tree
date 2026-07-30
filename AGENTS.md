@@ -8,8 +8,8 @@ Machine-readable grammar tables: [docs/agent/CONTRACT.md](docs/agent/CONTRACT.md
 
 **Only read or edit a file whose YAML frontmatter contains `type: task-tree`.** Never treat any
 other file as a board. Task-notes are marked `type: task-note`; edit their *content* freely below
-the frontmatter, but leave their structural frontmatter (`parent`, `depth`, `path`,
-`distance_to_main`, `task_id`, `board`, `task_status`) to the plugin — it reconciles those keys
+the frontmatter, but leave their structural frontmatter (`title`, `parent`, `task_id`, `board`,
+`task_status`) to the plugin — it reconciles those keys
 automatically on every render, so restructure boards freely and note positions self-heal.
 `task_status: orphaned` means the note's task was deleted from its board.
 
@@ -22,8 +22,8 @@ automatically on every render, so restructure boards freely and note positions s
 - `<indent>`: one unit per depth level — **match the file's existing style** (tab by default).
 - `<marker>`: `-`, `*`, or `+`. Preserve it when rewriting a line.
 - `<status>`: one character inside `[ ]`. Default mapping: `" "` todo · `/` doing · `x` done ·
-  `-` cancelled · `!` blocked. A board can remap via `tt_columns` in its frontmatter — check there
-  first.
+  `-` cancelled · `!` blocked. **These characters always mean this**, even on a board whose columns
+  don't list them. A board that means something else says so in `tt_columns` — check there first.
 - `[tt-override:: <role>]`: an explicit human decision. Respect it; never remove or contradict it
   without being asked.
 - `[tt-blocked-by:: <id>, <id>]`: dependency edges — bare block ids of tasks on the same board.

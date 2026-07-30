@@ -88,6 +88,13 @@ export interface TaskNode {
 	blockedBy: string[];
 	/** Role of this node's own status character. */
 	literalRole: Role;
+	/**
+	 * False when nothing claimed this task's status character — not its columns, not the
+	 * published table — so `literalRole` is a fallback guess. Surfaced in the UI rather
+	 * than applied silently: a character quietly meaning something it was never assigned
+	 * is how a board drifts from what its author thinks it says.
+	 */
+	statusMapped: boolean;
 	/** Roll-up over children, ignoring any override. */
 	derivedRole: Role;
 	/** override ?? (has task children ? derivedRole : literalRole). */

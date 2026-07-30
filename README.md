@@ -143,10 +143,13 @@ breadcrumb to step back out.
 
 Right-click any task → **"Open / create note"** and the task gets its own note — for progress, code,
 research, or its own deeper checklists — linked from the task line and carrying **self-describing
-frontmatter** (`board`, `parent`, `depth`, `path`, `task_id`) so both you and an agent can read where
-it sits without opening the board.
+frontmatter** (`board`, `parent`, `task_id`) so both you and an agent can tell which board and which
+task it belongs to without opening the board.
 
-That frontmatter **maintains itself**: every time the board renders, the plugin reconciles each
+Deliberately, that is *all* it carries. Depth and ancestry are not copied into the note — they're
+facts about the board, and a copy of a fact in a file the plugin doesn't own can only go stale.
+
+What is there **maintains itself**: every time the board renders, the plugin reconciles each
 note's structural fields against the live tree — no matter who moved, renamed, or restructured the
 tasks (you, the plugin, or an AI editing the raw Markdown). Deleting a task marks its note
 `task_status: orphaned` (undo clears it); the note's *content* is never touched. A "Resync all

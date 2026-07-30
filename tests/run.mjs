@@ -20,9 +20,16 @@ import {
 	setBlockedByInText,
 	clearBlockedByInText,
 } from "../src/model/writer.ts";
-import { DEFAULT_COLUMNS, validateColumns, roleForStatus, canonicalStatusForRole } from "../src/columns.ts";
+import {
+	DEFAULT_COLUMNS,
+	validateColumns,
+	roleForStatus,
+	canonicalStatusForRole,
+	deviatesFromPublished,
+	resolveStatus,
+} from "../src/columns.ts";
 import { columnsFromFrontmatter } from "../src/model/okf.ts";
-import { expectedNoteFields, noteFieldsDrift } from "../src/model/notemeta.ts";
+import { expectedNoteFields, noteFieldsDrift, retiredFieldsPresent } from "../src/model/notemeta.ts";
 import { generateId } from "../src/model/ids.ts";
 import {
 	computeSummary,
@@ -631,52 +638,38 @@ test("the skill's bundled contract is byte-identical to docs/agent/CONTRACT.md",
 	assert.equal(bundled, contractDoc);
 });
 
-// ---- note frontmatter integrity ---------------------------------------------
+// ---- note frontmatter: what a note may and may not carry --------------------
 console.log("note frontmatter");
-test("expectedNoteFields builds the full structural shape", () => {
-	const f = expectedNoteFields({
-		title: "Reservar hotel",
-		path: ["Viaje", "Alojamiento"],
-		parentTitle: "Alojamiento",
-		depth: 2,
-		boardName: "Viaje 2026",
-	});
-	assert.deepEqual(f, {
-		title: "Reservar hotel",
-		parent: "Alojamiento",
-		depth: 2,
-		distance_to_main: 2,
-		path: "Viaje / Alojamiento / Reservar hotel",
-	});
+test("expectedNoteFields carries only what a note cannot derive from itself", () => {
+	const f = expectedNoteFields({ title: "Hotel", parentTitle: "Alojamiento", boardName: "B" });
+	assert.deepEqual(f, { title: "Hotel", parent: "Alojamiento" });
 });
-test("root task maps to parent '(root)' and bare path", () => {
-	const f = expectedNoteFields({ title: "Solo", path: [], parentTitle: null, depth: 0, boardName: "B" });
-	assert.equal(f.parent, "(root)");
-	assert.equal(f.path, "Solo");
+test("a root task maps to parent '(root)'", () => {
+	assert.equal(expectedNoteFields({ title: "Solo", parentTitle: null, boardName: "B" }).parent, "(root)");
 });
-test("noteFieldsDrift pinpoints exactly the stale keys (renamed parent case)", () => {
-	const expected = expectedNoteFields({
-		title: "Hotel",
-		path: ["Alojamiento renombrado"],
-		parentTitle: "Alojamiento renombrado",
-		depth: 1,
-		boardName: "B",
-	});
-	const cached = {
-		title: "Hotel",
-		parent: "Alojamiento", // stale
-		depth: 1,
-		distance_to_main: 1,
-		path: "Alojamiento / Hotel", // stale
-		task_id: "t-x",
-	};
-	assert.deepEqual(noteFieldsDrift(cached, expected), ["parent", "path"]);
+test("noteFieldsDrift pinpoints exactly the stale keys", () => {
+	const expected = expectedNoteFields({ title: "Hotel", parentTitle: "Alojamiento renombrado", boardName: "B" });
+	const cached = { title: "Hotel", parent: "Alojamiento", task_id: "t-x" }; // parent is stale
+	assert.deepEqual(noteFieldsDrift(cached, expected), ["parent"]);
 });
 test("noteFieldsDrift: missing frontmatter drifts everything; in-sync drifts nothing", () => {
-	const expected = expectedNoteFields({ title: "T", path: [], parentTitle: null, depth: 0, boardName: "B" });
-	assert.equal(noteFieldsDrift(undefined, expected).length, 5);
-	const inSync = { title: "T", parent: "(root)", depth: 0, distance_to_main: 0, path: "T" };
-	assert.deepEqual(noteFieldsDrift(inSync, expected), []);
+	const expected = expectedNoteFields({ title: "T", parentTitle: null, boardName: "B" });
+	assert.equal(noteFieldsDrift(undefined, expected).length, 2);
+	assert.deepEqual(noteFieldsDrift({ title: "T", parent: "(root)" }, expected), []);
+});
+test("the retired derivations are detected so reconcile can remove them", () => {
+	// Stopping the writes is not enough — keys already on disk would rot with nothing
+	// marking them stale, which is worse than maintaining them.
+	assert.deepEqual(
+		retiredFieldsPresent({ title: "T", parent: "(root)", depth: 2, distance_to_main: 2, path: "A / B / T" }),
+		["depth", "distance_to_main", "path"],
+	);
+	assert.deepEqual(retiredFieldsPresent({ title: "T", parent: "(root)" }), []);
+	assert.deepEqual(retiredFieldsPresent(undefined), []);
+});
+test("a note the plugin writes today carries none of the retired keys", () => {
+	const f = expectedNoteFields({ title: "T", parentTitle: null, boardName: "B" });
+	assert.deepEqual(retiredFieldsPresent(f), []);
 });
 
 // ---- recursive note progress (v1.1) -----------------------------------------
@@ -897,6 +890,56 @@ test("a cancelled child no longer blocks its milestone under the shipped default
 	const roots = parse(["- [ ] Infrastructure", "\t- [x] Domain", "\t- [-] Dropped idea"], DEFAULT_COLUMNS);
 	assert.equal(roots[0].effectiveRole, "done");
 	assert.deepEqual(roots[0].progress, { done: 1, total: 1 });
+});
+
+// ---- a board that says what it means -----------------------------------------
+console.log("self-describing boards");
+test("the shipped defaults need no tt_columns — the published table already says this", () => {
+	assert.equal(deviatesFromPublished(DEFAULT_COLUMNS), false);
+});
+test("adding the standard Blocked / Cancelled columns still needs no stamp", () => {
+	// Their meaning is published, so writing it into every board would be pure churn.
+	assert.equal(deviatesFromPublished(COLS), false);
+});
+test("a genuinely remapped board deviates and must be stamped", () => {
+	assert.equal(
+		deviatesFromPublished([
+			{ id: "todo", name: "To Do", status: " ", role: "todo" },
+			{ id: "wip", name: "WIP", status: ">", role: "doing" }, // '>' is nobody's published char
+			{ id: "done", name: "Done", status: "x", role: "done" },
+		]),
+		true,
+	);
+	assert.equal(
+		deviatesFromPublished([
+			{ id: "a", name: "Odd", status: "x", role: "todo" }, // 'x' published as done
+		]),
+		true,
+	);
+});
+test("a stamped board is read back exactly as written, ignoring the vault default", () => {
+	const stamped = { tt_columns: [{ name: "WIP", status: ">", role: "doing" }] };
+	const cols = columnsFromFrontmatter(stamped, DEFAULT_COLUMNS);
+	assert.equal(cols.length, 1);
+	assert.equal(roleForStatus(">", cols, "todo"), "doing");
+});
+
+// ---- an unmapped character says so -------------------------------------------
+console.log("unmapped characters");
+test("a character nobody claims is reported as unmapped, not silently guessed", () => {
+	const r = resolveStatus("?", DEFAULT_COLUMNS, "doing");
+	assert.equal(r.mapped, false);
+	assert.equal(r.role, "doing"); // still the published fallback, just not silent
+});
+test("claimed and published characters are mapped", () => {
+	assert.equal(resolveStatus("x", DEFAULT_COLUMNS, "doing").mapped, true);
+	assert.equal(resolveStatus("-", DEFAULT_COLUMNS, "doing").mapped, true); // published
+	assert.equal(resolveStatus("!", DEFAULT_COLUMNS, "doing").mapped, true); // published
+});
+test("the parser flags the node so a view can show it", () => {
+	const roots = parse(["- [?] Mystery", "- [x] Known"], DEFAULT_COLUMNS);
+	assert.equal(roots[0].statusMapped, false);
+	assert.equal(roots[1].statusMapped, true);
 });
 
 // ---- "next up" means NOW -----------------------------------------------------

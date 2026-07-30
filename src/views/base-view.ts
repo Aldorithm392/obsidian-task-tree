@@ -13,6 +13,7 @@ import {
 	addRootTask,
 	addSiblingTask,
 	deleteTask,
+	ensureBoardColumns,
 	ensureIds,
 	loadBoard,
 	renameBoard,
@@ -146,10 +147,13 @@ export abstract class TaskTreeView extends ItemView {
 			this.renderNotManaged(c, file);
 			return;
 		}
+		// Both of these write and bail: the 'changed' event brings us straight back with a
+		// fresh cache. Frontmatter first — inserting a YAML key shifts every task line, and
+		// every write below this point is line-addressed.
+		if (await ensureBoardColumns(this.plugin, file)) return;
 		// Ids are infrastructure, not a preference: dependencies, collapse state and the
 		// agent contract all key on them. Assigned once, never regenerated.
-		const wrote = await ensureIds(this.plugin, file);
-		if (wrote) return; // the 'changed' event will trigger a fresh render
+		if (await ensureIds(this.plugin, file)) return;
 		try {
 			const model = await loadBoard(this.plugin, file);
 			this.renderBoard(c, model);

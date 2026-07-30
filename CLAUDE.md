@@ -37,6 +37,11 @@ compatible with AI agents by following the methodology of Google's Open Knowledg
 - **Operation A (restructure)** moves a subtree (children travel; only indent/order change).
   **Operation B (state change)** flips exactly one status char. Keep them distinct.
 - **Frontmatter is user-useful only** — no `okf_version` / `tt_version` stamped into board files.
+- **The membrane, both ways.** Meaning that a reader needs goes IN the file: `tt_columns` is stamped
+  once when a board's char→role mapping deviates from the *published* table (`ensureBoardColumns`),
+  because comparing a board to the reader's own settings is circular. Derivations stay OUT of files
+  the plugin doesn't own: task-notes carry `title`/`board`/`parent`/`task_id` only — `depth`,
+  `distance_to_main` and `path` were removed and are stripped on reconcile.
 
 ## Architecture
 
@@ -58,8 +63,8 @@ src/
     rollup.ts          computeRollup()
     insights.ts        computeSummary / collectBlockers / collectNextUp / markBlockedPaths (dashboard)
                        + resolveEdges / collectDependencyBlocked (tt-blocked-by graph, cycles)
-    notemeta.ts        expectedNoteFields / noteFieldsDrift — single source of truth for task-note
-                       structural frontmatter (creation + reconcile build from it)
+    notemeta.ts        expectedNoteFields / noteFieldsDrift / retiredFieldsPresent — single source
+                       of truth for task-note frontmatter (creation + reconcile build from it)
     noteprogress.ts    walkNoteProgress() — recursive checklist counts across linked task-notes
                        (caller supplies the reader; visited-set + depth cap + note budget)
     fuzzy.ts           foldDiacritics() / displayForm() — length-preserving accent folding

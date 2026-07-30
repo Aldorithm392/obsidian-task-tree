@@ -48,7 +48,7 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
 
 - [ ] "Open / create note": creates in the configured folder with self-describing frontmatter,
   appends the trailing `[[link]]`, opens in a new tab. Re-invoke → just opens.
-- [ ] Move the task's subtree → the note's `parent` / `depth` / `path` frontmatter resyncs.
+- [ ] Rename the task's parent → the note's `parent` frontmatter resyncs on the next render.
 - [ ] Note sections match the "Task-note sections" setting; emptying it creates a note that is
   just frontmatter.
 
@@ -99,6 +99,18 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
   pane a click in the row's empty space never triggers Delete.
 - [ ] Dashboard with a dependency-held leaf: it appears under "Waiting on dependencies" and
   **not** under "Next up".
+
+## The membrane (1.3.0)
+
+- [ ] With DEFAULT columns, a board gains **no** `tt_columns` on render — check the file is untouched.
+- [ ] Remap a column to a character the published table doesn't name (e.g. `>` → doing), open a board:
+  `tt_columns` is written into its frontmatter **once**, and the file is stable on later renders.
+- [ ] Open that board on a second machine with default settings: the characters still mean the same.
+- [ ] A task typed `[?]` shows an "unmapped" chip naming the character, not a confident role label.
+- [ ] A task-note created today has `title`, `board`, `parent`, `task_id` — and **no** `depth`,
+  `distance_to_main` or `path`.
+- [ ] An OLD task-note that still carries those three: they are removed on the next board render,
+  and the note's body is untouched.
 
 ## Regression guard
 

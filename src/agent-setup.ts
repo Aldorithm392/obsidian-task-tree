@@ -10,7 +10,7 @@ import CONTRACT_MD from "../docs/agent/CONTRACT.md";
 import SKILL_MD from "../skills/task-tree/SKILL.md";
 
 /** Bump when the embedded instructions change meaningfully — a bump re-stamps once. */
-const SECTION_VERSION = 3;
+const SECTION_VERSION = 4;
 const BEGIN = `<!-- task-tree:agents:v${SECTION_VERSION}:begin -->`;
 const ANY_BEGIN_RE = /<!-- task-tree:agents:v\d+:begin -->/;
 const END = "<!-- task-tree:agents:end -->";
@@ -26,9 +26,10 @@ progress, stable block ids, and dependencies. Before editing tasks, know the rul
 
 1. **The gate:** only treat a note as a board if its frontmatter has \`type: task-tree\`.
    Notes with \`type: task-note\` are a task's own page — edit their content freely, but
-   their structural frontmatter (\`title\`, \`board\`, \`parent\`, \`depth\`, \`path\`,
-   \`distance_to_main\`, \`task_id\`, \`task_status\`) is plugin-managed and will be
-   reconciled automatically; don't hand-edit it.
+   their structural frontmatter (\`title\`, \`board\`, \`parent\`, \`task_id\`,
+   \`task_status\`) is plugin-managed and will be reconciled automatically; don't
+   hand-edit it. Depth and ancestry are NOT stored in notes — read them from the board,
+   where they are facts rather than copies that can go stale.
 2. **Change state on leaves** (flip the char inside \`[ ]\`); a parent's state derives
    from its children — never mark a parent done directly. \`[tt-override:: role]\` on a
    line is an explicit human decision: respect it.
@@ -38,6 +39,9 @@ progress, stable block ids, and dependencies. Before editing tasks, know the rul
    indentation unit. A task's own note is its **trailing** \`[[wikilink]]\`.
 5. Dependencies: \`[tt-blocked-by:: t-id1, t-id2]\` — bare block ids on the same board;
    released when the target task is done/cancelled.
+7. **The characters mean what the contract says** — \`" "\` todo, \`/\` doing, \`x\` done,
+   \`-\` cancelled, \`!\` blocked — on every board. A board that means something else
+   declares it in \`tt_columns\`; if that key is absent, the published table applies.
 6. **Detail belongs in the task's note.** A task-note can carry its own \`- [ ]\` checklists
    and link to deeper task-notes; the plugin surfaces that as a read-only depth badge on
    the board task. It never feeds roll-up and never flips a board status character, so

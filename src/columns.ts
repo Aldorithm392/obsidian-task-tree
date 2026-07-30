@@ -42,6 +42,41 @@ export function columnById(id: string, columns: ColumnDef[]): ColumnDef | undefi
 	return columns.find((c) => c.id === id);
 }
 
+/** The role the PUBLISHED table gives a character, or undefined if it names none. */
+export function publishedRoleFor(ch: string): Role | undefined {
+	return ROLE_FOR_PUBLISHED_STATUS.get(norm(ch));
+}
+
+/**
+ * Does this column set mean something the published table does not already say?
+ *
+ * Compared against the PUBLISHED table, never against the vault setting — comparing a
+ * board to the reader's own configuration is circular, and is why a board could match
+ * its author's settings perfectly and still be unreadable to anyone else. Only the
+ * char → role mapping counts; renaming "Doing" to "In Progress" changes what a human
+ * reads, not what the file means, so it isn't worth writing into every board.
+ */
+export function deviatesFromPublished(columns: ColumnDef[]): boolean {
+	return columns.some((c) => publishedRoleFor(c.status) !== c.role);
+}
+
+/**
+ * Resolve a status character, reporting whether anything actually claimed it.
+ * `mapped: false` means the role is a guess (`unknownRole`) — the caller should say so
+ * out loud rather than let a character quietly mean something it was never assigned.
+ */
+export function resolveStatus(
+	ch: string,
+	columns: ColumnDef[],
+	unknownRole: Role,
+): { role: Role; mapped: boolean } {
+	const col = columnForStatus(ch, columns);
+	if (col) return { role: col.role, mapped: true };
+	const published = publishedRoleFor(ch);
+	if (published) return { role: published, mapped: true };
+	return { role: unknownRole, mapped: false };
+}
+
 export function roleForStatus(ch: string, columns: ColumnDef[], unknownRole: Role): Role {
 	const col = columnForStatus(ch, columns);
 	if (col) return col.role;

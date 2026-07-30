@@ -124,7 +124,31 @@ recorded as such in `docs/dev/UX_QA_FINDINGS.md`.
 - **A settings rule, written down.** A setting is a permanent branch in the code, the spec, the agent
   contract, the in-vault skill and the QA matrix. It has to earn all five.
 
-## Next (v1.2+ — candidates, not commitments)
+## Shipped (v1.3 — the membrane, both ways)
+
+The audit's headline finding was that Task Tree's membrane ran backwards: meaning a reader needs
+was outside the file, and derivations a reader can recompute were inside files the plugin doesn't
+own. Both directions are now fixed, and the four normative documents were updated in the same
+commit as the code.
+
+- **The board says what its own characters mean.** `tt_columns` had two readers and **zero
+  producers** — nothing in the codebase ever wrote it, so a board whose author remapped `[/]` carried
+  that meaning only in `data.json`. Same file, second machine, different semantics; and an AI agent
+  reading the raw Markdown had nothing to read, while the contract we install in users' vaults told
+  it to "check `tt_columns` first". It is now stamped once, automatically, when a board's char→role
+  mapping deviates from the **published** table — not from the reader's settings, which is circular
+  and is the bug itself. Boards using only published characters stay clean.
+- **An unmapped character says so.** A char nothing claims still reads as `doing`, but the row now
+  shows `[?] unmapped` instead of a confident label. A silent guess becomes a one-click fix.
+- **Derivations left the notes.** Task-notes carried `depth`, `distance_to_main` and `path` — pure
+  functions of the board, kept true only by a background reconcile, and `distance_to_main` was
+  literally `depth` under a second name. Delete the plugin and they don't vanish; they start lying.
+  Notes now carry `title` / `board` / `parent` / `task_id`, and the reconcile **strips** the retired
+  keys on next touch — because stopping the writes alone would leave them rotting with nothing
+  marking them stale, which is worse than maintaining them.
+- **`tt_rollup` deleted from the spec.** It was documented for a release and never existed in code.
+
+## Next (v1.4+ — candidates, not commitments)
 
 - **Diagram packing, properly.** Measured (see `docs/dev/VISUAL_HARNESS.md`): canvas height is
   leaf-bound and completely insensitive to `align-items`, so no CSS tweak will do it. A genuinely

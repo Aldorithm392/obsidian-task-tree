@@ -1,6 +1,6 @@
 import type { ColumnDef, RawListItem, Role, TaskNode } from "./types.ts";
 import { parseLine } from "./line.ts";
-import { roleForStatus } from "../columns.ts";
+import { resolveStatus } from "../columns.ts";
 
 export interface ParseOptions {
 	columns: ColumnDef[];
@@ -25,9 +25,9 @@ export function buildTree(items: RawListItem[], lines: string[], opts: ParseOpti
 		const statusChar = it.task !== undefined ? it.task : p.statusChar;
 		const isTask = it.task !== undefined || p.isTask;
 		const storedId = p.blockId ?? it.blockId;
-		const literalRole: Role = isTask
-			? roleForStatus(statusChar, opts.columns, opts.unknownRole)
-			: "todo";
+		const resolved = isTask
+			? resolveStatus(statusChar, opts.columns, opts.unknownRole)
+			: { role: "todo" as Role, mapped: true };
 
 		byLine.set(it.line, {
 			id: storedId ?? `L${it.line}`,
@@ -43,7 +43,8 @@ export function buildTree(items: RawListItem[], lines: string[], opts: ParseOpti
 			text: p.text,
 			override: p.override,
 			blockedBy: p.blockedBy ?? [],
-			literalRole,
+			literalRole: resolved.role,
+			statusMapped: resolved.mapped,
 			derivedRole: "todo",
 			effectiveRole: "todo",
 			progress: { done: 0, total: 0 },
