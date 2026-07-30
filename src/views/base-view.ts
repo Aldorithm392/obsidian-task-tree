@@ -146,10 +146,10 @@ export abstract class TaskTreeView extends ItemView {
 			this.renderNotManaged(c, file);
 			return;
 		}
-		if (this.plugin.settings.autoAssignIds) {
-			const wrote = await ensureIds(this.plugin, file);
-			if (wrote) return; // the 'changed' event will trigger a fresh render
-		}
+		// Ids are infrastructure, not a preference: dependencies, collapse state and the
+		// agent contract all key on them. Assigned once, never regenerated.
+		const wrote = await ensureIds(this.plugin, file);
+		if (wrote) return; // the 'changed' event will trigger a fresh render
 		try {
 			const model = await loadBoard(this.plugin, file);
 			this.renderBoard(c, model);
@@ -235,9 +235,7 @@ export abstract class TaskTreeView extends ItemView {
 	 * so an edit can never silently sever the task from its note.
 	 */
 	protected editableParts(node: TaskNode): { base: string; suffix: string } {
-		if (this.plugin.settings.showTaskNoteLink || !node.ownNoteLink) {
-			return { base: node.text, suffix: "" };
-		}
+		if (!node.ownNoteLink) return { base: node.text, suffix: "" };
 		return {
 			base: node.text.replace(/\s*\[\[[^\]]+\]\]\s*$/, "").trim(),
 			suffix: ` [[${node.ownNoteLink}]]`,

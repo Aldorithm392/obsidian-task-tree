@@ -23,6 +23,9 @@ humans, as plain files:
 - Concepts link via ordinary Markdown links → an untyped directed **graph**; meaning is in the prose;
   consumers must tolerate broken links.
 - Reserved files: `index.md` (a directory listing, no frontmatter) and `log.md` (dated history).
+  Task Tree no longer generates these — an agent can enumerate boards by grepping for
+  `type: task-tree`, which is what the plugin itself does, so the generated copy was a
+  second artifact that could only drift.
 
 Task Tree adopts this methodology so a Task Tree vault *is* an OKF bundle with no extra work.
 
@@ -37,7 +40,7 @@ Task Tree adopts this methodology so a Task Tree vault *is* an OKF bundle with n
 | Concept identity (path) | The board's path, e.g. `projects/website-redesign` |
 | Sub-concept | A **task**, addressed by block id |
 | Directed edge (link) | A Markdown link between tasks/boards (e.g. a dependency) |
-| `index.md` / `log.md` | Optional bundle index + update log the plugin can build |
+| `index.md` / `log.md` | Optional bundle index + update log (hand-written; the plugin does not generate them) |
 
 **Deliberate deviation** (announced, per the philosophy): OKF says "one concept per file," but Task
 Tree keeps a whole tree in one file — the readable single-file tree *is* the product. So the concept
@@ -96,8 +99,6 @@ language, in the moment.
 
 `src/model/okf.ts` includes pure builders the plugin can use:
 
-- `buildIndexMd(entries)` → an OKF `index.md` listing your boards (a board-of-boards).
-- `appendLogEntry(existing, date, entry)` → prepend a dated line to `log.md` (newest first).
 
 These are optional niceties for a fuller bundle; the core plugin works without them. See the
 [`examples/`](../examples/) folder for a minimal bundle (`index.md`, `log.md`, one project board)

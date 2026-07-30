@@ -4,17 +4,33 @@ import type { ColumnDef, Role, TreeLayout } from "./model/types.ts";
 import { ALL_ROLES } from "./model/types.ts";
 import { DEFAULT_COLUMNS, validateColumns } from "./columns.ts";
 
+/**
+ * Decisions the plugin makes, so the user doesn't have to.
+ *
+ * Each of these used to be a setting. None encoded a real disagreement between two
+ * reasonable users — they encoded a decision that was hard, offloaded to a dropdown. A
+ * setting is not a reversible choice: it is a permanent branch in the code, in the format
+ * spec, in the agent contract, in the skill installed inside users' vaults, and in the QA
+ * matrix. These are now closed, in one place, with the answer the docs always published.
+ */
+export const FROZEN = {
+	/** Role for a status char no column claims and the published table doesn't name. */
+	unknownRole: "doing" as Role,
+	/** A blocked child surfaces to its parent — the spec's edge-case table says so. */
+	blockedDominates: true,
+	/** Block-id shape: `^t-` + 6 base36 chars. Ids are infrastructure, not preference. */
+	idPrefix: "t-",
+	idLength: 6,
+	/**
+	 * One tab per level when the plugin must invent indentation. It rarely does: `loadBoard`
+	 * DETECTS the unit a file already uses, so an existing board keeps its own style
+	 * regardless. This only ever applied to a board with no nesting yet.
+	 */
+	indentUnit: "\t",
+} as const;
+
 export interface TaskTreeSettings {
 	columns: ColumnDef[];
-	unknownRole: Role;
-	blockedDominates: boolean;
-	indentType: "tabs" | "spaces";
-	indentSize: number;
-	idPrefix: string;
-	idLength: number;
-	autoAssignIds: boolean;
-	parentAutoSync: boolean;
-	maintainTimestamp: boolean;
 	treeLayout: TreeLayout;
 	showBoardStats: boolean;
 	/** Folder for notes the plugin creates for a task. Empty = next to the board. */
@@ -23,12 +39,8 @@ export interface TaskTreeSettings {
 	newBoardFolder: string;
 	/** Keep a task-note's parent/depth/path frontmatter in sync when the task is moved. */
 	updateTaskNoteFrontmatter: boolean;
-	/** Show a task's own [[note]] link on the task line in the views (the file always keeps it). */
-	showTaskNoteLink: boolean;
 	/** Maintain in-vault agent instructions (AGENTS.md + Claude Code skill): ask once / on / off. */
 	agentInstructions: "ask" | "on" | "off";
-	/** Checkbox click steps through every column (todo → doing → done → …) instead of toggling done. */
-	checkboxCycles: boolean;
 	/** Show the recursive note-progress badge (checklists inside a task's linked notes). */
 	showNoteProgress: boolean;
 	/** How many note levels the recursive walk follows. 1 = the task's own note only. */
@@ -43,22 +55,11 @@ export interface TaskTreeSettings {
 
 export const DEFAULT_SETTINGS: TaskTreeSettings = {
 	columns: DEFAULT_COLUMNS.map((c) => ({ ...c })),
-	unknownRole: "doing",
-	blockedDominates: true,
-	indentType: "tabs",
-	indentSize: 4,
-	idPrefix: "t-",
-	idLength: 6,
-	autoAssignIds: true,
-	parentAutoSync: false,
-	maintainTimestamp: false,
 	treeLayout: "list",
 	showBoardStats: false,
 	taskNoteFolder: "",
 	newBoardFolder: "",
 	updateTaskNoteFrontmatter: true,
-	showTaskNoteLink: false,
-	checkboxCycles: false,
 	agentInstructions: "ask",
 	showNoteProgress: true,
 	noteProgressDepth: 3,
@@ -69,9 +70,13 @@ export const DEFAULT_SETTINGS: TaskTreeSettings = {
 	taskNoteSections: "Progress, Status, Notes",
 };
 
-/** The indentation unit used when the plugin writes moved or new lines. */
-export function getIndentUnit(settings: TaskTreeSettings): string {
-	return settings.indentType === "tabs" ? "\t" : " ".repeat(Math.max(1, settings.indentSize));
+/**
+ * The indentation unit for lines the plugin has to invent from nothing. Boards with any
+ * nesting get their own detected unit from `loadBoard` instead, so tabs-vs-spaces was
+ * never the user's problem to solve.
+ */
+export function getIndentUnit(): string {
+	return FROZEN.indentUnit;
 }
 
 export class TaskTreeSettingTab extends PluginSettingTab {
@@ -95,29 +100,6 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 
 		this.renderColumns(containerEl);
 
-		new Setting(containerEl).setName("Roll-up").setHeading();
-
-		new Setting(containerEl)
-			.setName("Unknown status role")
-			.setDesc("Role assigned to a checkbox character that no column claims.")
-			.addDropdown((d) => {
-				for (const r of ALL_ROLES) d.addOption(r, r);
-				d.setValue(this.plugin.settings.unknownRole).onChange(async (v) => {
-					this.plugin.settings.unknownRole = v as Role;
-					await this.plugin.saveSettings();
-				});
-			});
-
-		new Setting(containerEl)
-			.setName("Blocked surfaces to parent")
-			.setDesc("When on, a blocked child makes its parent read as blocked.")
-			.addToggle((t) =>
-				t.setValue(this.plugin.settings.blockedDominates).onChange(async (v) => {
-					this.plugin.settings.blockedDominates = v;
-					await this.plugin.saveSettings();
-				}),
-			);
-
 		new Setting(containerEl).setName("Tree view").setHeading();
 
 		new Setting(containerEl)
@@ -132,18 +114,6 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
-
-		new Setting(containerEl)
-			.setName("Checkbox steps through every column")
-			.setDesc(
-				"When on, clicking a task's checkbox cycles To Do → Doing → Done → … When off (default), one click simply toggles Done — other states stay reachable from the Kanban board and the right-click menu.",
-			)
-			.addToggle((t) =>
-				t.setValue(this.plugin.settings.checkboxCycles).onChange(async (v) => {
-					this.plugin.settings.checkboxCycles = v;
-					await this.plugin.saveSettings();
-				}),
-			);
 
 		new Setting(containerEl)
 			.setName("Density")
@@ -197,65 +167,6 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 						this.plugin.settings.noteProgressDepth = v;
 						await this.plugin.saveSettings();
 					}),
-			);
-
-		new Setting(containerEl).setName("Writing").setHeading();
-
-		new Setting(containerEl)
-			.setName("Indentation")
-			.setDesc("The unit used when the plugin writes moved or new task lines.")
-			.addDropdown((d) => {
-				d.addOption("tabs", "Tab");
-				d.addOption("spaces", "Spaces");
-				d.setValue(this.plugin.settings.indentType).onChange(async (v) => {
-					this.plugin.settings.indentType = v as "tabs" | "spaces";
-					await this.plugin.saveSettings();
-					this.display();
-				});
-			});
-
-		if (this.plugin.settings.indentType === "spaces") {
-			new Setting(containerEl).setName("Spaces per level").addText((t) =>
-				t
-					.setValue(String(this.plugin.settings.indentSize))
-					.onChange(async (v) => {
-						const n = Number.parseInt(v, 10);
-						if (Number.isFinite(n) && n > 0) {
-							this.plugin.settings.indentSize = n;
-							await this.plugin.saveSettings();
-						}
-					}),
-			);
-		}
-
-		new Setting(containerEl)
-			.setName("Auto-assign block IDs")
-			.setDesc("Give every task in a managed board a stable ^id (written once).")
-			.addToggle((t) =>
-				t.setValue(this.plugin.settings.autoAssignIds).onChange(async (v) => {
-					this.plugin.settings.autoAssignIds = v;
-					await this.plugin.saveSettings();
-				}),
-			);
-
-		new Setting(containerEl)
-			.setName("Block ID prefix")
-			.setDesc("Namespaces Task Tree ids so they are greppable, e.g. t- gives ^t-a1b2c3.")
-			.addText((t) =>
-				t.setValue(this.plugin.settings.idPrefix).onChange(async (v) => {
-					this.plugin.settings.idPrefix = v.replace(/[^A-Za-z0-9-]/g, "");
-					await this.plugin.saveSettings();
-				}),
-			);
-
-		new Setting(containerEl)
-			.setName("Maintain OKF timestamp")
-			.setDesc("Update the board's frontmatter timestamp on each change (adds churn to git).")
-			.addToggle((t) =>
-				t.setValue(this.plugin.settings.maintainTimestamp).onChange(async (v) => {
-					this.plugin.settings.maintainTimestamp = v;
-					await this.plugin.saveSettings();
-				}),
 			);
 
 		new Setting(containerEl).setName("New boards & task notes").setHeading();
@@ -313,18 +224,6 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 						this.plugin.settings.taskNoteSections = v;
 						await this.plugin.saveSettings();
 					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Show the note link on the task line")
-			.setDesc(
-				"When off (default), a task's own [[note]] link is hidden in the views so the title doesn't appear twice — the Markdown file always keeps the link, and the note stays reachable from the file icon and the right-click menu.",
-			)
-			.addToggle((t) =>
-				t.setValue(this.plugin.settings.showTaskNoteLink).onChange(async (v) => {
-					this.plugin.settings.showTaskNoteLink = v;
-					await this.plugin.saveSettings();
-				}),
 			);
 
 		new Setting(containerEl).setName("AI agents").setHeading();

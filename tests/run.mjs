@@ -21,13 +21,7 @@ import {
 	clearBlockedByInText,
 } from "../src/model/writer.ts";
 import { DEFAULT_COLUMNS, validateColumns, roleForStatus, canonicalStatusForRole } from "../src/columns.ts";
-import {
-	columnsFromFrontmatter,
-	buildIndexMd,
-	appendLogEntry,
-	isOwnedBundle,
-	BUNDLE_MARKER,
-} from "../src/model/okf.ts";
+import { columnsFromFrontmatter } from "../src/model/okf.ts";
 import { expectedNoteFields, noteFieldsDrift } from "../src/model/notemeta.ts";
 import { generateId } from "../src/model/ids.ts";
 import {
@@ -903,31 +897,6 @@ test("a cancelled child no longer blocks its milestone under the shipped default
 	const roots = parse(["- [ ] Infrastructure", "\t- [x] Domain", "\t- [-] Dropped idea"], DEFAULT_COLUMNS);
 	assert.equal(roots[0].effectiveRole, "done");
 	assert.deepEqual(roots[0].progress, { done: 1, total: 1 });
-});
-
-// ---- bundle files the plugin does not own ------------------------------------
-console.log("bundle ownership");
-test("a user's own index.md is never rewritable", () => {
-	// `index.md` at the vault root is one of the most common MOC filenames in Obsidian,
-	// and the index command rewrites wholesale — this guard is what stops it destroying one.
-	assert.equal(isOwnedBundle("# My Map of Content\n\n- [[Projects]]\n- [[Areas]]\n"), false);
-	assert.equal(isOwnedBundle("Some notes I typed."), false);
-});
-test("our own generated bundles are rewritable, and so is an empty file", () => {
-	assert.equal(isOwnedBundle(buildIndexMd([{ path: "a.md", title: "A" }])), true);
-	assert.equal(isOwnedBundle(appendLogEntry("", "2026-07-29", "first")), true);
-	assert.equal(isOwnedBundle(""), true);
-	assert.equal(isOwnedBundle("   \n  "), true);
-});
-test("generated bundles carry the ownership marker", () => {
-	assert.ok(buildIndexMd([]).includes(BUNDLE_MARKER));
-	assert.ok(appendLogEntry("", "2026-07-29", "x").includes(BUNDLE_MARKER));
-});
-test("appending to a log preserves what was already there", () => {
-	const existing = appendLogEntry("", "2026-07-01", "older entry");
-	const next = appendLogEntry(existing, "2026-07-29", "newer entry");
-	assert.ok(next.includes("older entry"), "an append must never drop prior entries");
-	assert.ok(next.includes("newer entry"));
 });
 
 // ---- "next up" means NOW -----------------------------------------------------

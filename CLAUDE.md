@@ -44,7 +44,8 @@ compatible with AI agents by following the methodology of Google's Open Knowledg
 src/
   main.ts              plugin: views, commands, ribbon, settings, activateView, leaf-rebind on rename,
                        maybeOfferAgentSetup (consent-once agent onboarding)
-  settings.ts          TaskTreeSettings + DEFAULT_SETTINGS + settings tab; getIndentUnit()
+  settings.ts          TaskTreeSettings + DEFAULT_SETTINGS + settings tab; FROZEN (decisions the
+                       plugin makes so the user needn't); getIndentUnit()
   columns.ts           char <-> column <-> role mapping; validateColumns()
   board-controller.ts  loadBoard() (+ debounced note reconcile), ensureIds(), writeStatus/Override/
                        BlockedBy/moveNode (vault.process), task=note create/resolve, reconcileBoardNotes
@@ -65,15 +66,16 @@ src/
     templates.ts       parse/renderStarterTasks + parse/renderNoteSections (generated text = settings)
     writer.ts          setStatus/Override/BlockedBy, assignIds, moveSubtree + CRUD: insert/delete/setText/addTag
     ids.ts             generateId() / collectBlockIds()
-    okf.ts             isManagedFrontmatter(), isTaskNoteFrontmatter(), columnsFromFrontmatter(),
-                       index/log builders
+    okf.ts             isManagedFrontmatter(), isTaskNoteFrontmatter(), columnsFromFrontmatter()
   views/
     base-view.ts       TaskTreeView base + VIEW_TYPE_* (kanban/tree/dashboard); dashboard header + blockers panel
     kanban-view.ts     columns from model; SortableJS per column = Operation B; CRUD menu
-    tree-view.ts       3 layouts (list/diagram/columns), collapse/focus, full-focus, checkbox toggle (opt-in column cycle), reparent = Operation A
+    tree-view.ts       3 layouts (list/diagram/columns), collapse/focus, full-focus, checkbox = toggle
+                       done, keyboard layer, localRect() for overlay geometry, reparent = Operation A
     dashboard-view.ts  extends TreeView: full header + blockers panel + tree
     card.ts            shared chip / progress / note-progress / override-badge DOM + roleIcon()
-    modals.ts          promptText() / confirmModal() / AccentFuzzyModal (accent-insensitive pickers)
+    modals.ts          promptText() / confirmModal() -> confirm|reject|dismiss / confirmed() /
+                       AccentFuzzyModal (accent-insensitive pickers)
 ```
 
 **Dashboard + editing:** views carry a compact dashboard header (rename board / add task / stats);
@@ -81,8 +83,8 @@ src/
 `board-controller` CRUD wrappers → pure `writer` ops. `markBlockedPaths` runs in `loadBoard`, so every
 view can show ⚠ on ancestors of a blocked leaf. Tree layout + focus state persist in the leaf view-state.
 
-**Keyboard:** the list layout is an ARIA tree on a roving tabindex (`wireListKeyboard` in
-`tree-view.ts`): ↑↓ walk, ←→ fold, Enter edits, Space toggles. Anything that writes re-renders, so
+**Keyboard:** every layout is walkable on a roving tabindex (`wireTreeKeyboard` / `wireColumnsKeyboard` in
+`tree-view.ts`; the list is also a real ARIA tree): ↑↓ walk, ←→ fold, Enter edits, Space toggles. Anything that writes re-renders, so
 the row to land on afterwards is stashed in `pendingFocusId` and re-focused on the way back — the
 same trick `pendingEdit` uses in `base-view.ts`.
 
@@ -111,6 +113,12 @@ npm run build     # tsc -noEmit (typecheck) + esbuild → main.js
 npm run dev       # esbuild watch (pair with pjeby/hot-reload in a test vault)
 npm test          # node tests/run.mjs — pure-logic suite, no Obsidian, no deps
 ```
+
+**Settings are a last resort.** A setting is not a reversible decision — it is a permanent branch in
+the code, in `docs/03_FORMAT_SPEC.md`, in `docs/agent/CONTRACT.md`, in the skill installed inside
+users' vaults, and in `docs/dev/QA_CHECKLIST.md`. Before adding one, ask whether it encodes a genuine
+disagreement between two reasonable users (where my files live) or a decision the plugin declined to
+make (what an unmapped character means). The second kind belongs in `FROZEN` in `settings.ts`.
 
 Release: `npm version patch|minor|major` (bumps manifest + versions.json), push tag `X.Y.Z`
 (no leading `v`) → the GitHub Action attaches `main.js`/`manifest.json`/`styles.css`.

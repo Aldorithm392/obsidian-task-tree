@@ -203,11 +203,8 @@ Obsidian/Tasks convention.
 - Open current file as tree
 - Create a new board
 - Convert current file to a board
-- Assign block IDs to all tasks in current file
 - Add a task to the open board (bind a hotkey — keyboard capture)
 - Open a board… (picker)
-- Build the boards index (`index.md`)
-- Append an entry to the boards log (`log.md`)
 - Resync all task-note frontmatter
 
 ---

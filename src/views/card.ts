@@ -4,12 +4,13 @@ import type { EdgeGraph } from "../model/insights.ts";
 import { columnForRole, columnForStatus } from "../columns.ts";
 
 /**
- * A task's title as the human should see it: the trailing link to its OWN note is
- * hidden (the file keeps it — it's the agent-facing edge), unless the user opted to
- * show it. A task whose text is only the link falls back to the note name.
+ * A task's title as the human should see it: the trailing link to its OWN note is hidden
+ * (the file keeps it — it's the agent-facing edge). A task whose text is only the link
+ * falls back to the note name. This used to be a setting whose "on" value simply showed
+ * every title twice; there was only ever one right answer.
  */
-export function taskDisplayText(node: TaskNode, showNoteLink = false): string {
-	if (showNoteLink || !node.ownNoteLink) return node.text;
+export function taskDisplayText(node: TaskNode): string {
+	if (!node.ownNoteLink) return node.text;
 	const stripped = node.text.replace(/\s*\[\[[^\]]+\]\]\s*$/, "").trim();
 	return stripped || node.ownNoteLink;
 }

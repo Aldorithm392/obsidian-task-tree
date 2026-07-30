@@ -4,8 +4,7 @@ import { KanbanView } from "./views/kanban-view.ts";
 import { TreeView } from "./views/tree-view.ts";
 import { DashboardView } from "./views/dashboard-view.ts";
 import { TaskTreeView, VIEW_TYPE_DASHBOARD, VIEW_TYPE_KANBAN, VIEW_TYPE_TREE } from "./views/base-view.ts";
-import { appendLogEntry, buildIndexMd, isManagedFrontmatter, isOwnedBundle, MANAGED_TYPE } from "./model/okf.ts";
-import { assignIdsInText } from "./model/writer.ts";
+import { isManagedFrontmatter, MANAGED_TYPE } from "./model/okf.ts";
 import { createBoardFile, reconcileBoardNotes } from "./board-controller.ts";
 import { ensureAgentInstructions } from "./agent-setup.ts";
 import { AccentFuzzyModal, confirmModal, promptText } from "./views/modals.ts";
@@ -75,15 +74,6 @@ export default class TaskTreePlugin extends Plugin {
 			checkCallback: (checking) => this.activeMdGuard(checking, () => void this.convertActive()),
 		});
 		this.addCommand({
-			id: "assign-ids",
-			name: "Assign block IDs to all tasks in current file",
-			checkCallback: (checking) =>
-				this.activeMdGuard(checking, () => {
-					const f = this.app.workspace.getActiveFile();
-					if (f) void this.assignIdsCommand(f);
-				}),
-		});
-		this.addCommand({
 			id: "add-task",
 			name: "Add a task to the open board",
 			// Bindable to a hotkey: capture without reaching for the mouse, which is half
@@ -99,16 +89,6 @@ export default class TaskTreePlugin extends Plugin {
 			id: "open-picker",
 			name: "Open a board…",
 			callback: () => new BoardPicker(this.app, this).open(),
-		});
-		this.addCommand({
-			id: "build-index",
-			name: "Build the boards index (index.md)",
-			callback: () => void this.buildIndexCommand(),
-		});
-		this.addCommand({
-			id: "append-log",
-			name: "Append an entry to the boards log (log.md)",
-			callback: () => void this.appendLogCommand(),
 		});
 		this.addCommand({
 			id: "resync-task-notes",
@@ -198,83 +178,6 @@ export default class TaskTreePlugin extends Plugin {
 			);
 	}
 
-	/** Regenerate the OKF `index.md` bundle file: one link per managed board. */
-	private async buildIndexCommand(): Promise<void> {
-		const dir = this.settings.newBoardFolder;
-		const indexPath = normalizePath(dir ? `${dir}/index.md` : "index.md");
-		const entries = this.managedBoards()
-			.map((f) => {
-				const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
-				const title = typeof fm?.["title"] === "string" && fm["title"] ? (fm["title"]) : f.basename;
-				const description = typeof fm?.["description"] === "string" ? (fm["description"]) : undefined;
-				return { path: relPath(dir, f.path), title, description };
-			})
-			.sort((a, b) => a.title.localeCompare(b.title));
-		const content = buildIndexMd(entries);
-		const wrote = await this.writeBundleFile(indexPath, () => content, (d) => (d === content ? d : content));
-		if (!wrote) return; // it declined and already said why — don't claim success
-		new Notice(`Indexed ${entries.length} board${entries.length === 1 ? "" : "s"} in ${indexPath}.`);
-	}
-
-	/** Prompt for a line and prepend it to the OKF `log.md` under today's date. */
-	private async appendLogCommand(): Promise<void> {
-		const entry = await promptText(this.app, {
-			title: "Log entry",
-			placeholder: "What happened?",
-			cta: "Add to log",
-		});
-		if (!entry) return;
-		const dir = this.settings.newBoardFolder;
-		const logPath = normalizePath(dir ? `${dir}/log.md` : "log.md");
-		const date = new Date().toISOString().slice(0, 10);
-		const wrote = await this.writeBundleFile(
-			logPath,
-			() => appendLogEntry("", date, entry),
-			(d) => appendLogEntry(d, date, entry),
-		);
-		if (!wrote) return;
-		new Notice(`Logged under ${date} in ${logPath}.`);
-	}
-
-	/**
-	 * Create (or update, via vault.process) a bundle file, making its folder first if needed.
-	 *
-	 * Refuses to touch a file that isn't ours. `index.md` and `log.md` are among the most
-	 * common filenames in an Obsidian vault — and with an empty new-board folder these
-	 * resolve to the VAULT ROOT, where `index.md` is very often the user's own map of
-	 * content. The index command rewrites wholesale, so without this guard running it once
-	 * destroyed that file irrecoverably. Returns false when it declined.
-	 */
-	private async writeBundleFile(
-		path: string,
-		create: () => string,
-		update: (existing: string) => string,
-	): Promise<boolean> {
-		const existing = this.app.vault.getAbstractFileByPath(path);
-		if (existing instanceof TFile) {
-			const current = await this.app.vault.cachedRead(existing);
-			if (!isOwnedBundle(current)) {
-				new Notice(
-					`Task Tree: "${path}" already exists and wasn't created by Task Tree, so it was left untouched. Point the new-board folder somewhere else, or delete that file first.`,
-					8000,
-				);
-				return false;
-			}
-			await this.app.vault.process(existing, update);
-			return true;
-		}
-		const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-		if (dir && !this.app.vault.getAbstractFileByPath(dir)) {
-			try {
-				await this.app.vault.createFolder(dir);
-			} catch {
-				// already exists / race — ignore
-			}
-		}
-		await this.app.vault.create(path, create());
-		return true;
-	}
-
 	private activeMdGuard(checking: boolean, run: () => void): boolean {
 		const f = this.app.workspace.getActiveFile();
 		if (!f || f.extension !== "md") return false;
@@ -283,10 +186,20 @@ export default class TaskTreePlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, (await this.loadData()) as Partial<TaskTreeSettings> | null);
+		const stored = ((await this.loadData()) ?? {}) as Record<string, unknown>;
+		// Keep only keys the plugin still has. Settings that became FROZEN decisions would
+		// otherwise sit in every user's data.json forever, silently re-saved on each change,
+		// looking like configuration that does something.
+		const known: Record<string, unknown> = {};
+		for (const key of Object.keys(DEFAULT_SETTINGS)) {
+			if (key in stored) known[key] = stored[key];
+		}
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, known as Partial<TaskTreeSettings>);
 		if (!Array.isArray(this.settings.columns) || this.settings.columns.length === 0) {
 			this.settings.columns = DEFAULT_SETTINGS.columns.map((c) => ({ ...c }));
 		}
+		// Write the pruned shape back once, so the stale keys actually leave the file.
+		if (Object.keys(stored).length !== Object.keys(known).length) await this.saveData(this.settings);
 	}
 
 	async saveSettings(): Promise<void> {
@@ -392,28 +305,8 @@ export default class TaskTreePlugin extends Plugin {
 		});
 		new Notice(`"${file.basename}" is now a Task Tree board.`);
 		return true;
-	}
+	}}
 
-	private async assignIdsCommand(file: TFile): Promise<void> {
-		let assigned = 0;
-		await this.app.vault.process(file, (data) => {
-			const res = assignIdsInText(data, { prefix: this.settings.idPrefix, length: this.settings.idLength });
-			assigned = res.assigned;
-			return res.text;
-		});
-		new Notice(assigned > 0 ? `Assigned ${assigned} block id${assigned === 1 ? "" : "s"}.` : "All tasks already have ids.");
-	}
-}
-
-/** Vault path of `to`, relative to the folder `fromDir` ("" = vault root). */
-function relPath(fromDir: string, to: string): string {
-	if (!fromDir) return to;
-	const from = fromDir.split("/");
-	const parts = to.split("/");
-	let i = 0;
-	while (i < from.length && from[i] === parts[i]) i++;
-	return [...(Array(from.length - i).fill("..") as string[]), ...parts.slice(i)].join("/");
-}
 
 class BoardPicker extends AccentFuzzyModal<TFile> {
 	private plugin: TaskTreePlugin;

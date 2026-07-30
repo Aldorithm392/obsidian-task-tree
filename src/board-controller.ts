@@ -9,7 +9,7 @@ import { expectedNoteFields, noteFieldsDrift, type ExpectedNoteFields } from "./
 import { walkNoteProgress, type NoteSnapshot } from "./model/noteprogress.ts";
 import { renderNoteSections, renderStarterTasks } from "./model/templates.ts";
 import { roleForStatus } from "./columns.ts";
-import { getIndentUnit } from "./settings.ts";
+import { FROZEN, getIndentUnit } from "./settings.ts";
 import {
 	addTagInText,
 	assignIdsInText,
@@ -61,11 +61,11 @@ export async function loadBoard(
 	}));
 
 	const rollupOpts: RollupOptions = {
-		unknownRole: settings.unknownRole,
-		blockedDominates: settings.blockedDominates,
+		unknownRole: FROZEN.unknownRole,
+		blockedDominates: FROZEN.blockedDominates,
 	};
 
-	const roots = buildTree(items, lines, { columns, unknownRole: settings.unknownRole });
+	const roots = buildTree(items, lines, { columns, unknownRole: FROZEN.unknownRole });
 	computeRollup(roots, rollupOpts);
 	markBlockedPaths(roots);
 	const graph = resolveEdges(roots);
@@ -93,7 +93,7 @@ export async function loadBoard(
 	// so moves/inserts match the file's own style (tabs vs N spaces), not the global setting.
 	const nodes = flatten(roots);
 	const nodeById = new Map(nodes.map((n) => [n.id, n]));
-	let indentUnit = getIndentUnit(settings);
+	let indentUnit = getIndentUnit();
 	for (const n of nodes) {
 		if (!n.parentId) continue;
 		const p = nodeById.get(n.parentId);
@@ -126,12 +126,11 @@ export async function loadBoard(
 
 /** Assign a stable ^id to every task that lacks one. Returns true if it wrote. */
 export async function ensureIds(plugin: TaskTreePlugin, file: TFile): Promise<boolean> {
-	if (!plugin.settings.autoAssignIds) return false;
 	let assigned = 0;
 	await plugin.app.vault.process(file, (data) => {
 		const res = assignIdsInText(data, {
-			prefix: plugin.settings.idPrefix,
-			length: plugin.settings.idLength,
+			prefix: FROZEN.idPrefix,
+			length: FROZEN.idLength,
 		});
 		assigned = res.assigned;
 		return res.text;
@@ -146,7 +145,6 @@ export async function writeStatus(
 	status: string,
 ): Promise<void> {
 	await plugin.app.vault.process(file, (d) => setStatusInText(d, line, status));
-	await touch(plugin, file);
 }
 
 export async function writeOverride(
@@ -157,7 +155,6 @@ export async function writeOverride(
 	columns: ColumnDef[],
 ): Promise<void> {
 	await plugin.app.vault.process(file, (d) => setOverrideInText(d, line, role, columns));
-	await touch(plugin, file);
 }
 
 export async function clearOverride(
@@ -166,7 +163,6 @@ export async function clearOverride(
 	line: number,
 ): Promise<void> {
 	await plugin.app.vault.process(file, (d) => clearOverrideInText(d, line));
-	await touch(plugin, file);
 }
 
 /** Replace a task's dependency list (`tt-blocked-by`); an empty list clears the field. */
@@ -177,7 +173,6 @@ export async function writeBlockedBy(
 	ids: string[],
 ): Promise<void> {
 	await plugin.app.vault.process(file, (d) => setBlockedByInText(d, line, ids));
-	await touch(plugin, file);
 }
 
 export async function moveNode(
@@ -194,7 +189,6 @@ export async function moveNode(
 	if (!changed) return; // a no-op move (dropped in place) shouldn't touch anything
 	// Note frontmatter heals via reconcile-on-render: the write triggers a re-render,
 	// the re-render reconciles. No per-move bookkeeping needed.
-	await touch(plugin, file);
 }
 
 // ---- CRUD (dashboard editing) ----------------------------------------------
@@ -207,7 +201,6 @@ export async function addChildTask(plugin: TaskTreePlugin, model: BoardModel, pa
 	await plugin.app.vault.process(model.file, (d) =>
 		insertTaskInText(d, parent.lastDescLine, indent, NEW_TASK_TEXT),
 	);
-	await touch(plugin, model.file);
 	return parent.lastDescLine + 1;
 }
 
@@ -215,7 +208,6 @@ export async function addSiblingTask(plugin: TaskTreePlugin, model: BoardModel, 
 	await plugin.app.vault.process(model.file, (d) =>
 		insertTaskInText(d, node.lastDescLine, node.indentText, NEW_TASK_TEXT),
 	);
-	await touch(plugin, model.file);
 	return node.lastDescLine + 1;
 }
 
@@ -223,7 +215,6 @@ export async function addRootTask(plugin: TaskTreePlugin, model: BoardModel): Pr
 	const lastRoot = model.roots[model.roots.length - 1];
 	const after = lastRoot ? lastRoot.lastDescLine : model.bodyStart - 1;
 	await plugin.app.vault.process(model.file, (d) => insertTaskInText(d, after, "", NEW_TASK_TEXT));
-	await touch(plugin, model.file);
 	return after + 1;
 }
 
@@ -241,7 +232,6 @@ export async function deleteTask(plugin: TaskTreePlugin, file: TFile, node: Task
 		}
 	}
 	await plugin.app.vault.process(file, (d) => deleteRangeInText(d, node.line, node.lastDescLine));
-	await touch(plugin, file);
 	for (const note of orphans) {
 		try {
 			await plugin.app.fileManager.processFrontMatter(note, (fm: Record<string, unknown>) => {
@@ -260,7 +250,6 @@ export async function renameTask(
 	text: string,
 ): Promise<void> {
 	await plugin.app.vault.process(file, (d) => setTaskTextInText(d, node.line, text));
-	await touch(plugin, file);
 }
 
 export async function addTagTask(
@@ -270,7 +259,6 @@ export async function addTagTask(
 	tag: string,
 ): Promise<void> {
 	await plugin.app.vault.process(file, (d) => addTagInText(d, node.line, tag));
-	await touch(plugin, file);
 }
 
 /**
@@ -348,7 +336,7 @@ export async function createBoardFile(plugin: TaskTreePlugin, title: string, fol
 
 	return app.vault.create(
 		path,
-		boardFileContent(title, getIndentUnit(plugin.settings), plugin.settings.newBoardStarterTasks),
+		boardFileContent(title, getIndentUnit(), plugin.settings.newBoardStarterTasks),
 	);
 }
 
@@ -458,7 +446,6 @@ export async function openOrCreateTaskNote(
 		taskNoteContent(node, meta, model.file.basename, name, plugin.settings.taskNoteSections),
 	);
 	await app.vault.process(model.file, (d) => setTaskTextInText(d, node.line, `${node.text} [[${name}]]`));
-	await touch(plugin, model.file);
 	await app.workspace.getLeaf("tab").openFile(created);
 }
 
@@ -506,7 +493,7 @@ function readNoteSnapshot(plugin: TaskTreePlugin, columns: ColumnDef[], path: st
 	const roles: Role[] = [];
 	for (const li of cache?.listItems ?? []) {
 		if (li.task === undefined) continue;
-		roles.push(roleForStatus(li.task, columns, plugin.settings.unknownRole));
+		roles.push(roleForStatus(li.task, columns, FROZEN.unknownRole));
 	}
 
 	// Resolved outbound links, filtered to task-notes. The board itself is linked from
@@ -642,13 +629,3 @@ export async function reconcileBoardNotes(plugin: TaskTreePlugin, file: TFile): 
 	return reconcileModelNotes(plugin, model);
 }
 
-async function touch(plugin: TaskTreePlugin, file: TFile): Promise<void> {
-	if (!plugin.settings.maintainTimestamp) return;
-	try {
-		await plugin.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
-			fm["timestamp"] = new Date().toISOString();
-		});
-	} catch {
-		// non-fatal: a timestamp update should never block a real edit
-	}
-}

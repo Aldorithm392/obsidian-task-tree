@@ -10,13 +10,11 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
 - [ ] "Create a new board" — prompts, creates in the configured folder, opens the tree, starter
   tasks present. Empty folder setting → vault root; collision → " 2" suffix.
 - [ ] "Convert current file to a board" — adds `type: task-tree` + `title` without touching the body.
-- [ ] "Assign block IDs to all tasks in current file" — every task gets `^t-…` once; ids stable on re-run.
+- [ ] Block IDs are assigned automatically on first render — every task gets `^t-…` once, ids stable on re-open. There is no toggle and no command; that is deliberate.
 - [ ] "Add a task to the open board" — works with the tree focused, with it parked in a sidebar,
   and with only the Kanban open; the new row lands in edit mode.
 - [ ] "Open a board…" — lists only `type: task-tree` files; typing an unaccented query finds an
   accented board (`dia` → `día`) and the match highlight lands on the right characters.
-- [ ] "Build the boards index (index.md)" — regenerates; every board listed, titles from frontmatter.
-- [ ] "Append an entry to the boards log (log.md)" — dated section, newest first; created if missing.
 
 ## Views
 
@@ -38,7 +36,7 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
 - [ ] Inline rename (click / double-click by view): Enter saves, Esc cancels, blur saves; the line
   keeps its status, override, blocked-by, and `^id`.
 - [ ] + / − hover buttons on nodes in every layout.
-- [ ] Context menu: mark as each column, override set + clear, move up/down/end, indent/outdent,
+- [ ] Context menu: mark as each column (same wording in tree and Kanban), override set + clear, move up/down, indent/outdent,
   add subtask/sibling, rename, tag, delete (confirm on subtree).
 - [ ] Drag-reparent (list grip, diagram, columns) — children travel; only indent/order changes.
 - [ ] "Blocked by…" picker: adds `[tt-blocked-by:: …]` before `^id`; picking again removes; "Clear
@@ -90,9 +88,6 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
 
 ## Safety (added after the 1.1.1 audit — these are the ones that cost data)
 
-- [ ] With a hand-written `index.md` at the vault root, run "Build the boards index": it must
-  **refuse**, explain why, and leave the file byte-identical. Then delete it, re-run, and confirm
-  the generated one carries the `<!-- task-tree:bundle -->` marker and *is* rewritable.
 - [ ] Ribbon / "Open current file as …" on a note **without** `type: task-tree`: it must show the
   "not a board yet" screen and write **nothing** — check the file is untouched and no `^ids` appear.
 - [ ] Same, on a note declaring `type: book`: an explanatory notice, no false success, no dead button.

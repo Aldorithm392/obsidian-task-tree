@@ -104,7 +104,27 @@ migration, a `tt_version` key can be introduced then, opt-in.
   It immediately caught a v1.0 bug — the inverted diagram drew its dependency edges through a
   mirrored transform using screen coordinates, so every curve pointed at the wrong task.
 
-## Next (v1.2 — candidates, not commitments)
+## Shipped (v1.2 — the audit, and the subtraction)
+
+A 22-agent philosophy/UX study plus two competitive deep-dives. Every finding was re-verified
+against the code before acting on it, and two of the report's own claims were wrong and are
+recorded as such in `docs/dev/UX_QA_FINDINGS.md`.
+
+- **1.1.1 — six defects, two of which cost data.** The plugin wrote status characters it could not
+  read back (`-` and `!` both came back as `doing`, so an agent obeying the contract we install in
+  the user's vault could stop a milestone from ever completing); "Build the boards index" rewrote a
+  vault-root `index.md` wholesale; hidden row buttons were invisible live tap targets on touch;
+  Escape was recorded as a permanent "no"; "Next up" recommended tasks it simultaneously called
+  blocked; and the ribbon converted whatever note was open without asking.
+- **The surface came down.** 23 settings → 12, 11 commands → 8, and the tree/Kanban menus now use
+  one vocabulary. The cuts were not preferences: `unknownRole`, `blockedDominates`, id shape and
+  indent unit are now `FROZEN` constants with the answer the documentation always published;
+  `parentAutoSync` was dead code shipped in every user's `data.json`; the index/log generators were a
+  second artifact that could only drift from a vault an agent can already enumerate by grep.
+- **A settings rule, written down.** A setting is a permanent branch in the code, the spec, the agent
+  contract, the in-vault skill and the QA matrix. It has to earn all five.
+
+## Next (v1.2+ — candidates, not commitments)
 
 - **Diagram packing, properly.** Measured (see `docs/dev/VISUAL_HARNESS.md`): canvas height is
   leaf-bound and completely insensitive to `align-items`, so no CSS tweak will do it. A genuinely

@@ -113,7 +113,7 @@ export class KanbanView extends TaskTreeView {
 			this,
 			main,
 			"tt-card-text",
-			taskDisplayText(node, this.plugin.settings.showTaskNoteLink),
+			taskDisplayText(node),
 			model.file.path,
 		);
 		this.registerDomEvent(textEl, "click", (e) => {
@@ -190,7 +190,10 @@ export class KanbanView extends TaskTreeView {
 		for (const col of model.columns) {
 			menu.addItem((i) =>
 				i
-					.setTitle(`Move to ${col.name}`)
+					// Same wording as the tree's menu: the board and the tree are two lenses on
+					// one structure, and the same action was called two different things
+					// depending on which lens the user happened to be standing in.
+					.setTitle(`Mark as ${col.name}`)
 					// One glyph per role: five identical arrows read as one blur.
 					.setIcon(roleIcon(col.role))
 					.onClick(() => void this.applyColumn(node, col, model)),

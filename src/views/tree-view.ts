@@ -293,7 +293,7 @@ export class TreeView extends TaskTreeView {
 			this,
 			host,
 			"tt-node-text",
-			taskDisplayText(node, this.plugin.settings.showTaskNoteLink),
+			taskDisplayText(node),
 			model.file.path,
 		);
 		if (node.effectiveRole === "done") text.addClass("tt-done");
@@ -973,19 +973,12 @@ export class TreeView extends TaskTreeView {
 
 	private cycle(node: TaskNode, model: BoardModel): Promise<void> {
 		if (node.isLeaf) {
-			// Default: a checkbox is a checkbox — one click toggles done. Stepping through
-			// every column (todo → doing → done → …) is Kanban semantics, opt-in via the
-			// "checkbox steps through every column" setting; states remain reachable from
-			// the Kanban board and the context menu either way.
-			if (!this.plugin.settings.checkboxCycles) {
-				const role = node.effectiveRole === "done" ? "todo" : "done";
-				return writeStatus(this.plugin, model.file, node.line, canonicalStatusForRole(role, model.columns));
-			}
-			const cur = placementColumn(node, model.columns);
-			const idx = cur ? model.columns.findIndex((c) => c.id === cur.id) : -1;
-			const next = model.columns[(idx + 1) % model.columns.length];
-			if (next) return writeStatus(this.plugin, model.file, node.line, next.status);
-			return Promise.resolve();
+			// A checkbox is a checkbox: one click toggles done. Stepping through every column
+			// was an opt-in setting that made the most familiar control in the product mean
+			// something no other checkbox in Obsidian means. Other states live on the Kanban
+			// board, in the context menu, and on Alt+arrows.
+			const role = node.effectiveRole === "done" ? "todo" : "done";
+			return writeStatus(this.plugin, model.file, node.line, canonicalStatusForRole(role, model.columns));
 		}
 		if (node.override) return clearOverride(this.plugin, model.file, node.line);
 		return writeOverride(this.plugin, model.file, node.line, "done", model.columns);
@@ -1061,22 +1054,6 @@ export class TreeView extends TaskTreeView {
 			start: node.line,
 			end: node.lastDescLine,
 			insertAfter: next.lastDescLine,
-			oldDepth: node.depth,
-			newDepth: node.depth,
-			indentUnit: model.indentUnit,
-			bodyStart: model.bodyStart,
-		});
-	}
-
-	/** Move a node to be the last of its current siblings (reliable "drop at the end"). */
-	private async moveToEnd(node: TaskNode, model: BoardModel): Promise<void> {
-		const sibs = this.siblings(node, model);
-		const last = sibs[sibs.length - 1];
-		if (!last || last.id === node.id) return; // already last
-		await moveNode(this.plugin, model.file, {
-			start: node.line,
-			end: node.lastDescLine,
-			insertAfter: last.lastDescLine,
 			oldDepth: node.depth,
 			newDepth: node.depth,
 			indentUnit: model.indentUnit,
@@ -1238,9 +1215,6 @@ export class TreeView extends TaskTreeView {
 		);
 		menu.addItem((i) =>
 			i.setTitle("Move down").setIcon("arrow-down").onClick(() => void this.moveDown(node, model)),
-		);
-		menu.addItem((i) =>
-			i.setTitle("Move to end").setIcon("chevrons-down").onClick(() => void this.moveToEnd(node, model)),
 		);
 		menu.addItem((i) =>
 			i
