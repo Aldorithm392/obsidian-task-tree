@@ -315,6 +315,32 @@
 	color: var(--text-muted);
 	text-decoration: line-through;
 }
+/*
+ * Cancelled: set aside, not struck off. Done is an achievement and reads as one; cancelled
+ * is work withdrawn, so the whole row recedes instead of the text being crossed out in the
+ * same weight. This treatment is what earns cancelled the right to have no Kanban lane —
+ * the state is visible wherever the task is, so nothing has to be hidden to say it.
+ */
+.tt-row.is-cancelled,
+.tt-dbox.is-cancelled,
+.tt-card.is-cancelled {
+	opacity: 0.65;
+}
+.tt-row.is-cancelled .tt-node-text,
+.tt-dbox.is-cancelled .tt-node-text,
+.tt-card.is-cancelled .tt-card-text {
+	text-decoration: line-through;
+	text-decoration-color: var(--text-faint);
+}
+/* Hover restores it: receding must never mean unreachable. */
+.tt-row.is-cancelled:hover,
+.tt-dbox.is-cancelled:hover,
+.tt-card.is-cancelled:hover,
+.tt-row.is-cancelled:focus-within,
+.tt-dbox.is-cancelled:focus-within,
+.tt-card.is-cancelled:focus-within {
+	opacity: 1;
+}
 .tt-inline-input {
 	flex: 1 1 auto;
 	min-width: 140px;
@@ -420,9 +446,16 @@
 .tt-chip[data-role="blocked"] {
 	background: var(--tt-chip-color, var(--color-red, #c0392b));
 }
+/*
+ * `--text-muted`, not `--text-faint`: the chip used to fade itself, back when it was the ONLY
+ * sign a task was cancelled. Now the row recedes too, and two mechanisms saying the same thing
+ * compounded into an unreadable label — measured in the harness, in both themes. The row
+ * carries the recession; the chip carries the word, and has to survive it. The strikethrough
+ * stays, because without it a grey chip is indistinguishable from To Do.
+ */
 .tt-chip[data-role="cancelled"] {
 	background: var(--tt-chip-color, var(--background-modifier-border));
-	color: var(--text-faint);
+	color: var(--text-muted);
 	text-decoration: line-through;
 }
 .tt-progress {

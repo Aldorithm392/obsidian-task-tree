@@ -37,13 +37,14 @@ Parser regexes (from `src/model/line.ts`):
 | `/` | `doing` | |
 | `x` | `done` | `X` is equivalent |
 | `-` | `cancelled` | excluded from roll-up |
-| `!` | `blocked` | dominates a parent (default; toggleable) |
+| `!` | `blocked` | surfaces to the parent |
 
 A board may remap chars↔columns↔roles via `tt_columns` in its frontmatter; **roles** are the stable
 layer. The characters in the table above always mean what the table says, even on a board whose
 columns don't list them — so `- [-] Dropped` reads as `cancelled` and `- [!] Stuck` as `blocked`
 anywhere. A board's own `tt_columns` still wins for any character it claims. Any *other* unmapped
-char defaults to `doing` (setting: `unknownRole`).
+char reads as `doing` — and the plugin labels it "unmapped" rather than showing a confident role
+it was never given.
 
 ## Reserved inline fields
 

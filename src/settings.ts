@@ -77,7 +77,12 @@ export const DEFAULT_SETTINGS: TaskTreeSettings = {
 	treeDensity: "comfortable",
 	// English defaults, because something has to ship — both are settings precisely so a
 	// vault written in another language isn't stuck with them.
-	newBoardStarterTasks: "First task\n\tA subtask\nSecond task",
+	// One subtask starts done, and that single character is the entire tutorial: the first
+	// frame of a new board shows "1/2", a half-filled bar, and a parent that is visibly NOT
+	// done — roll-up taught by observation in three seconds. The old template marked nothing,
+	// so `K/D` never rendered and every new user's first board omitted the one mechanism no
+	// competing plugin copies.
+	newBoardStarterTasks: "First task\n\t[x] A subtask\n\tAnother subtask\nSecond task",
 	taskNoteSections: "Progress, Status, Notes",
 };
 

@@ -4,11 +4,6 @@ title: Website Redesign
 description: Q3 marketing-site rebuild — a worked Task Tree board.
 tags: [project, marketing]
 timestamp: 2026-07-19T14:30:00Z
-tt_columns:
-  - { name: To Do,   status: " ", role: todo }
-  - { name: Doing,   status: "/", role: doing }
-  - { name: Blocked, status: "!", role: blocked }
-  - { name: Done,    status: "x", role: done }
 ---
 
 - [/] Design ^t-design
@@ -20,6 +15,7 @@ tt_columns:
 - [!] Content ^t-content
 	- [!] Copywriting (waiting on brand sign-off) ^t-copy
 	- [ ] Photography ^t-photo
+	- [-] Customer video ^t-video
 - [x] Infrastructure [tt-override:: done] ^t-infra
 	- [x] Domain + DNS ^t-domain
 	- [ ] Staging box ^t-staging

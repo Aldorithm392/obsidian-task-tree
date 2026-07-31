@@ -19,7 +19,7 @@ import { flatten } from "../model/parser.ts";
 import { computeSummary } from "../model/insights.ts";
 import { isDerived } from "../model/rollup.ts";
 import { isFolded } from "../model/folding.ts";
-import type { TaskNode, TreeLayout } from "../model/types.ts";
+import { ALL_ROLES, type TaskNode, type TreeLayout } from "../model/types.ts";
 import type TaskTreePlugin from "../main.ts";
 import {
 	createBlockedBelowMark,
@@ -34,7 +34,7 @@ import {
 	roleLabel,
 	taskDisplayText,
 } from "./card.ts";
-import { canonicalStatusForRole } from "../columns.ts";
+import { boardLanes, canonicalStatusForRole } from "../columns.ts";
 import { FROZEN } from "../settings.ts";
 import { confirmed, promptText } from "./modals.ts";
 
@@ -336,6 +336,10 @@ export class TreeView extends TaskTreeView {
 			model.file.path,
 		);
 		if (node.effectiveRole === "done") text.addClass("tt-done");
+		// Cancelled is out of the flow, like done, but it is not an achievement — it reads as
+		// set aside rather than struck off, so a scan down the tree doesn't count it as work
+		// finished. The row treatment is what lets cancelled exist without a Kanban lane.
+		if (node.effectiveRole === "cancelled") host.addClass("is-cancelled");
 		this.registerDomEvent(text, opts.editTrigger, (e) => {
 			if ((e.target as HTMLElement).closest("a")) return; // links navigate; they don't start an edit
 			e.stopPropagation();
@@ -1095,7 +1099,10 @@ export class TreeView extends TaskTreeView {
 	private buildNodeMenu(node: TaskNode, model: BoardModel): Menu {
 		const menu = new Menu();
 		const derived = isDerived(node);
-		for (const col of model.columns) {
+		// Every ROLE, not every column — see the same loop in kanban-view.ts. Which lanes a
+		// board draws is a layout choice; it was never meant to decide which states a task is
+		// allowed to be in, and on a default board that quietly withheld cancelled entirely.
+		for (const col of boardLanes(model.columns, ALL_ROLES)) {
 			menu.addItem((i) =>
 				i
 					// A derived node cannot simply "be" a state — saying so means overriding what

@@ -185,7 +185,35 @@ commit as the code.
   fold state, and a test fails on any raw `collapsed.has(id)` — the drift that had the diagram
   drawing an open branch under a chevron pointing right.
 
-## Next (v1.6+ — candidates, not commitments)
+## Shipped (v1.6 — the five roles become reachable)
+
+- **The plugin could read a state its owner could not write.** The context menu was built by
+  iterating `model.columns`, so on a default board "Mark as Cancelled" did not exist — while the
+  README advertised cancelled, roll-up excluded it from the denominator, and the `CONTRACT.md` the
+  plugin installs in the user's own vault told *agents* to write `[-]`. The human's collaborator
+  could produce a state the human couldn't. Menus now offer every **role**: which lanes a board
+  draws is a layout choice, and it was never meant to decide which states a task may be in.
+- **`blocked` gets a default lane; `cancelled` deliberately doesn't.** Blocked work is in the flow
+  and is the lane you most want to see filling up. Cancelled work is out of it, and a permanently
+  empty column would tax every board for a state most never reach. Neither is a reinterpretation —
+  `roleForStatus` has honoured the published table since 1.1.1.
+- **Cancelled cards no longer land in To Do.** The Kanban fell back to `columns[0]` for any role
+  without a column, so work you had explicitly decided *not* to do came back as the top of your
+  backlog. `boardLanes` gives a role a lane exactly when the board has tasks in it — neither a
+  permanent empty column nor a card the plugin quietly hides.
+- **A cancelled row recedes instead of reading as finished**, which is what earns cancelled the
+  right to have no lane: the state is visible wherever the task is. Measured in the harness: the
+  chip's own fade plus the new row fade compounded into an unreadable label in both themes, so the
+  row now carries the recession and the chip carries the word.
+- **The first frame of a new board teaches roll-up.** The starter template marked nothing, so `K/D`
+  never rendered and every new user's first board omitted the one mechanism no competing plugin
+  copies. One subtask now starts done: `1/2`, a half-filled bar, and a parent visibly not done.
+- **The manifest stopped advertising the commodity.** It led with roll-up — which Task Genius (151k)
+  and CardBoard (170k) also ship, and both *mutate the parent*, destroying recomputability. After
+  1.3–1.5 the invariant is structurally true, so it is finally the thing we claim: *never writes a
+  fact your Markdown doesn't already carry.*
+
+## Next (v1.7+ — candidates, not commitments)
 
 - **Diagram packing, properly.** Measured (see `docs/dev/VISUAL_HARNESS.md`): canvas height is
   leaf-bound and completely insensitive to `align-items`, so no CSS tweak will do it. A genuinely

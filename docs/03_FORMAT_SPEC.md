@@ -74,11 +74,20 @@ universal Obsidian/Tasks convention, so a board that declares nothing is still s
 |--------|-------------|------|
 | To Do  | `" "` space | `todo` |
 | Doing  | `/`         | `doing` |
+| Blocked | `!`        | `blocked` |
 | Done   | `x` (also `X`) | `done` |
 
-Two more characters are **published** and always mean what they say, even on a board whose columns
-don't list them: `-` = `cancelled` and `!` = `blocked`. So adding a Blocked or Cancelled column
-changes nothing about how the file reads, and needs no declaration.
+`-` = `cancelled` is **published** on the same footing but ships without a column, because cancelled
+work is not a stage in the flow — a permanently empty lane would tax every board for a state most
+never reach. The character means `cancelled` regardless, on any board, declared or not.
+
+Both `-` and `!` are published characters and always mean what they say, even on a board whose
+columns don't list them. So adding — or removing — a Blocked or Cancelled column changes nothing
+about how the file reads, and needs no declaration.
+
+**Columns are a layout, not a vocabulary.** Which lanes a board draws is a display choice; the five
+roles are always available to write. A UI that offered only the configured columns would let a
+board's layout silently decide which states its tasks are permitted to be in.
 
 A board that gives a character a *different* meaning — or uses one this table doesn't name — MUST
 declare its full `tt_columns`. That is how a non-standard board *announces itself* so it reads the

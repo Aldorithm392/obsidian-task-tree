@@ -20,6 +20,11 @@ compatible with AI agents by following the methodology of Google's Open Knowledg
   read/write any other file.
 - **Roles are the stable layer:** `todo | doing | done | cancelled | blocked`. Columns (name + one
   status char each) map to roles; roll-up and overrides reason about roles, not raw chars.
+- **Columns are a layout, not a vocabulary.** `DEFAULT_COLUMNS` ships four lanes (no `cancelled` —
+  it isn't a stage in the flow), but **menus offer every role** via `boardLanes(columns, ALL_ROLES)`.
+  Iterating `model.columns` in a menu is the bug that made "Mark as Cancelled" not exist on a default
+  board. A role with tasks and no column earns a lane on that board only — otherwise those cards fell
+  through to `columns[0]`, and cancelled work reappeared at the top of To Do.
 - **Task line:** `<indent>- [<status>] <text> [tt-override:: <role>]? [tt-blocked-by:: <ids>]? ^<id>?`.
   Indent = one **tab** per level by default. Block id `^t-<6 base36>` is the last token; existing ids
   are never regenerated.
@@ -51,7 +56,8 @@ src/
                        maybeOfferAgentSetup (consent-once agent onboarding)
   settings.ts          TaskTreeSettings + DEFAULT_SETTINGS + settings tab; FROZEN (decisions the
                        plugin makes so the user needn't); getIndentUnit()
-  columns.ts           char <-> column <-> role mapping; validateColumns()
+  columns.ts           char <-> column <-> role mapping; validateColumns(); boardLanes() — the
+                       lanes a board draws / the roles a menu offers (columns are a LAYOUT)
   board-controller.ts  loadBoard() (+ debounced note reconcile), ensureIds(), writeStatus/Override/
                        BlockedBy/moveNode (vault.process), task=note create/resolve, reconcileBoardNotes
   agent-setup.ts       maintains vault AGENTS.md managed section + .claude/skills/task-tree

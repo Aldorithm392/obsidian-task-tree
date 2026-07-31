@@ -1,9 +1,20 @@
 # Task Tree for Obsidian
 
-**A task manager that is simple, but on steroids.** Task Tree lets you break a project into a
-*tree* of tasks — task → subtask → sub-subtask, as deep as you think — while also seeing the same
-work as a **Kanban board**. Everything is plain Markdown. The plugin is a visualization layer over
-your `- [ ]` checklists, not a database and not a new format.
+**Task Tree shows the nested `- [ ]` lists you already wrote as a tree and as a board — and never
+writes a fact your Markdown doesn't already carry.**
+
+That second half is the whole plugin. Plenty of tools roll a parent's progress up from its
+children; the ones that do it by *writing the answer back into the parent* have destroyed the thing
+that made it trustworthy — now the file says `[x]` and you have no way to know whether a human
+decided that or a loop computed it. Task Tree derives the parent every time, from the children, in
+memory. A parent **cannot** lie about being complete, because nothing ever wrote its state down.
+
+When you do want to overrule the derivation, that is a different act and it looks like one: an
+`[tt-override:: done]` field, visible on the line, that you can grep for and an agent can read.
+
+So: break a project into a *tree* — task → subtask → sub-subtask, as deep as you think — and see the
+same work as a **Kanban board**. Everything is plain Markdown. The plugin is a visualization layer
+over your checklists, not a database and not a new format.
 
 The point isn't "another task app." It's **cognitive clarity**: every node is a small milestone that
 keeps you anchored to the big picture while you work in the weeds.
@@ -23,7 +34,7 @@ linked notes, and a surface an AI can operate — with none of those views ever 
 The originality isn't in any piece; it's in what emerges where the pieces meet:
 
 - checklists × hierarchy → **roll-up that can't lie** (a parent's state derives from its children)
-- one structure × many lenses → **the same tasks as tree, board, columns, or inverted goal-flow**
+- one structure × many lenses → **the same tasks as tree, board, or inverted goal-flow**
 - tasks × notes → **every task can deepen into its own page**, and the wiring maintains itself
 - files × agents → **a vault that teaches AI tools to work your boards**, with zero setup
 
@@ -205,8 +216,18 @@ more at once, **Settings → Task Tree → Density → Compact** restores the de
    tasks — every change writes straight back to the Markdown.
 
 Columns are fully configurable in **Settings → Task Tree** (add/remove/rename; each maps to a
-checkbox character). Defaults: **To Do** `[ ]`, **Doing** `[/]`, **Done** `[x]` — the universal
-Obsidian/Tasks convention.
+checkbox character). Defaults: **To Do** `[ ]`, **Doing** `[/]`, **Blocked** `[!]`, **Done** `[x]` —
+the universal Obsidian/Tasks convention.
+
+**Cancelled** `[-]` has no lane by default, on purpose: it's work you decided *not* to do, so it
+isn't a stage in the flow, and a permanently empty column would tax every board for a state most
+never reach. It's still a first-class role — "Mark as Cancelled" is in the right-click menu of both
+views, cancelled rows recede rather than reading as finished, and a cancelled child drops out of its
+parent's fraction instead of holding the milestone open forever. The moment a board *does* have
+cancelled work, the lane appears to hold it.
+
+The right-click menu offers every **role**, not every column. Which lanes you draw is a layout
+choice; it doesn't decide which states a task is allowed to be in.
 
 ### Commands
 

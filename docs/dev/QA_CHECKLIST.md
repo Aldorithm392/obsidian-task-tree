@@ -21,13 +21,11 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
 - [ ] Tree list: collapse/expand; collapse survives an Obsidian restart (stable-id nodes).
 - [ ] Tree diagram: hierarchy connectors; inverted toggle flips goal to the right; dependency
   overlay draws dashed curves (red = held); overlay toggle hides them; both persist.
-- [ ] Tree columns: drill-down; inverted variant.
 - [ ] Kanban: drag between columns flips exactly one status char (check the file diff!); WIP-exceeded
   column shows the over-limit style; column color tints header and chips. An empty column shows the
   dashed drop target, and it vanishes as soon as a card lands there.
 - [ ] Context menus show a distinct icon per role, not five checks.
 - [ ] Dashboard: stats, Blockers, "Waiting on dependencies" (when edges are held), Next up.
-- [ ] Full focus: open a subtree, edit inside it, exit.
 - [ ] Markdown in task text renders (a `[[link]]`, `**bold**`, a `#tag`); clicking a link opens it;
   clicking plain text starts the inline edit.
 
@@ -36,9 +34,9 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
 - [ ] Inline rename (click / double-click by view): Enter saves, Esc cancels, blur saves; the line
   keeps its status, override, blocked-by, and `^id`.
 - [ ] + / − hover buttons on nodes in every layout.
-- [ ] Context menu: mark as each column (same wording in tree and Kanban), override set + clear, move up/down, indent/outdent,
+- [ ] Context menu: mark as each **role** (same wording in tree and Kanban), override set + clear, move up/down, indent/outdent,
   add subtask/sibling, rename, tag, delete (confirm on subtree).
-- [ ] Drag-reparent (list grip, diagram, columns) — children travel; only indent/order changes.
+- [ ] Drag-reparent (list grip, diagram) — children travel; only indent/order changes.
 - [ ] "Waiting on…" picker: adds `[tt-blocked-by:: …]` before `^id`; picking again removes; "Stop
   waiting on other tasks" removes the field; badge + overlay update.
 - [ ] Rename board (header / goal box): frontmatter `title` set AND the file renamed; a `[[link]]`
@@ -111,6 +109,22 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
   pane a click in the row's empty space never triggers Delete.
 - [ ] Dashboard with a dependency-held leaf: it appears under "Waiting on dependencies" and
   **not** under "Next up".
+
+## The five roles (1.6.0)
+
+- [ ] On a board with **no** custom columns, right-click a task: the menu offers all five —
+  To Do, Doing, Blocked, Done, **Cancelled**. This is the one that did not exist before 1.6.
+- [ ] Mark a leaf Cancelled: the line becomes `[-]`, the row **recedes** (and reads legibly —
+  check the chip in light *and* dark), and its parent's fraction loses it from the denominator.
+- [ ] The Kanban shows a **Blocked** lane by default and **no** Cancelled lane. Mark something
+  cancelled → a Cancelled lane appears to hold it. Unmark it → the lane goes away again.
+- [ ] Drag a card **into** that on-demand lane: it writes `[-]`, exactly like the menu would.
+  (The lane's id exists only for this render — a drop that resolved against `columns` would
+  silently do nothing.)
+- [ ] Cancelled cards are never in To Do — the old fallback put every unhoused role there.
+- [ ] Create a new board: the first frame shows `1/2` on the first task, a half-filled bar, and
+  a parent that is visibly **not** done. If it opens all-unchecked, the tutorial is broken.
+- [ ] Edit the starter template to a line with `[x]` in it, create a board: the character lands.
 
 ## The membrane (1.3.0)
 

@@ -3,10 +3,19 @@ import type { ColumnDef, Role } from "./model/types.ts";
 /**
  * The default column set ships equal to the universal Obsidian / Tasks convention,
  * so a board that declares nothing is still self-describing by community standard.
+ *
+ * `blocked` is here and `cancelled` is not, and the asymmetry is deliberate. Blocked work
+ * is *in* the flow — it is the lane you most want to see filling up. Cancelled work is out
+ * of it, and a permanent empty "Cancelled" lane on every board would tax every user for a
+ * state most boards never reach. It is still reachable (the menu offers every role, not
+ * every column) and it still gets a lane the moment a board actually has one — see
+ * `boardLanes`. Neither character is a reinterpretation: `roleForStatus` has honoured the
+ * published table since 1.1.1, so `[!]` and `[-]` already meant this.
  */
 export const DEFAULT_COLUMNS: ColumnDef[] = [
 	{ id: "todo", name: "To Do", status: " ", role: "todo" },
 	{ id: "doing", name: "Doing", status: "/", role: "doing" },
+	{ id: "blocked", name: "Blocked", status: "!", role: "blocked" },
 	{ id: "done", name: "Done", status: "x", role: "done" },
 ];
 
@@ -101,6 +110,38 @@ export function canonicalStatusForRole(role: Role, columns: ColumnDef[]): string
 /** The canonical column used to *display* a role. */
 export function columnForRole(role: Role, columns: ColumnDef[]): ColumnDef | undefined {
 	return columns.find((c) => c.role === role);
+}
+
+/** Title case for a role with no column to name it: "cancelled" -> "Cancelled". */
+function labelForRole(role: Role): string {
+	return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+/**
+ * The lanes a Kanban board draws: the configured columns, plus one for any role that has
+ * tasks on THIS board and no column to hold them.
+ *
+ * Without it a cancelled task fell through to `columns[0]` — the To Do lane — so work you
+ * had explicitly decided not to do came back as the top of your backlog. The two obvious
+ * fixes are both wrong: a permanent lane taxes every board for a state most never reach,
+ * and hiding the cards makes the plugin conceal a fact the file plainly states. A lane
+ * that exists exactly when it has something in it is neither.
+ */
+export function boardLanes(columns: ColumnDef[], rolesPresent: Iterable<Role>): ColumnDef[] {
+	const lanes = [...columns];
+	const seen = new Set(columns.map((c) => c.role));
+	for (const role of rolesPresent) {
+		if (seen.has(role)) continue;
+		seen.add(role);
+		lanes.push({
+			// `tt-role-` cannot collide with a user column id, which is a slug they typed.
+			id: `tt-role-${role}`,
+			name: labelForRole(role),
+			status: ROLE_FALLBACK_STATUS[role],
+			role,
+		});
+	}
+	return lanes;
 }
 
 /** Returns a list of human-readable problems with a column configuration (empty = valid). */

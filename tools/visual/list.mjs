@@ -40,7 +40,10 @@ function row(node) {
 	const chev = node.children?.length
 		? `<span class="tt-toggle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></span>`
 		: `<span class="tt-toggle tt-toggle-empty"></span>`;
-	return `<div class="tt-row" role="treeitem" tabindex="-1" aria-level="${(node.depth ?? 0) + 1}">` +
+	// is-cancelled mirrors buildRowContent: cancelled has no Kanban lane, so the row treatment
+	// is the only place that state is visible at all.
+	const rowCls = `tt-row${node.role === "cancelled" ? " is-cancelled" : ""}`;
+	return `<div class="${rowCls}" role="treeitem" tabindex="-1" aria-level="${(node.depth ?? 0) + 1}">` +
 		`<span class="tt-drag-handle"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="18" r="1"/></svg></span>` +
 		chev +
 		// Mirrors renderListNode: a node with task children is a readout, not a control.
@@ -96,4 +99,5 @@ export const TREE = [
 		] },
 	] },
 	{ id: "t-c", text: "Ship", role: "todo", roleName: "To Do", notes: "4" },
+	{ id: "t-e", text: "Native mobile app", role: "cancelled", roleName: "Cancelled" },
 ];

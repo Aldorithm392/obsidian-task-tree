@@ -28,7 +28,9 @@ import {
 	canonicalStatusForRole,
 	deviatesFromPublished,
 	resolveStatus,
+	boardLanes,
 } from "../src/columns.ts";
+import { ALL_ROLES } from "../src/model/types.ts";
 import { columnsFromFrontmatter } from "../src/model/okf.ts";
 import { expectedNoteFields, noteFieldsDrift, retiredFieldsPresent } from "../src/model/notemeta.ts";
 import { generateId } from "../src/model/ids.ts";
@@ -818,22 +820,49 @@ test("folding is a no-op on text that has nothing to fold", () => {
 console.log("templates");
 test("starter tasks nest by indentation, tabs or spaces", () => {
 	assert.deepEqual(parseStarterTasks("First task\n\tA subtask\nSecond task"), [
-		{ depth: 0, text: "First task" },
-		{ depth: 1, text: "A subtask" },
-		{ depth: 0, text: "Second task" },
+		{ depth: 0, text: "First task", status: " " },
+		{ depth: 1, text: "A subtask", status: " " },
+		{ depth: 0, text: "Second task", status: " " },
 	]);
 	assert.deepEqual(parseStarterTasks("Uno\n  Dos\n    Tres"), [
-		{ depth: 0, text: "Uno" },
-		{ depth: 1, text: "Dos" },
-		{ depth: 2, text: "Tres" },
+		{ depth: 0, text: "Uno", status: " " },
+		{ depth: 1, text: "Dos", status: " " },
+		{ depth: 2, text: "Tres", status: " " },
 	]);
 });
 test("an over-indented line lands as a child, never as an orphan", () => {
 	assert.deepEqual(parseStarterTasks("Root\n\t\t\t\tWay too deep"), [
-		{ depth: 0, text: "Root" },
-		{ depth: 1, text: "Way too deep" },
+		{ depth: 0, text: "Root", status: " " },
+		{ depth: 1, text: "Way too deep", status: " " },
 	]);
-	assert.deepEqual(parseStarterTasks("\t\tIndented first line"), [{ depth: 0, text: "Indented first line" }]);
+	assert.deepEqual(parseStarterTasks("\t\tIndented first line"), [
+		{ depth: 0, text: "Indented first line", status: " " },
+	]);
+});
+test("a starter line may carry its own checkbox, with or without a list marker", () => {
+	assert.deepEqual(parseStarterTasks("[x] Done\n- [/] Doing\n- Plain\nBare"), [
+		{ depth: 0, text: "Done", status: "x" },
+		{ depth: 0, text: "Doing", status: "/" },
+		{ depth: 0, text: "Plain", status: " " },
+		{ depth: 0, text: "Bare", status: " " },
+	]);
+	assert.deepEqual(parseStarterTasks("[x]"), [], "a line that is only a checkbox has no task in it");
+});
+test("the SHIPPED template teaches roll-up in its first frame", () => {
+	// The whole point of the default: a parent that is visibly not done, over a real
+	// fraction. A template where nothing is marked never renders K/D at all, so every new
+	// user's first board omitted the one mechanism no competing plugin copies.
+	// The literal that actually ships, read out of settings.ts — a test that inlined its own
+	// copy would keep passing after someone edited the default back to nothing marked.
+	const src = readFileSync(new URL("../src/settings.ts", import.meta.url), "utf8");
+	const shipped = /newBoardStarterTasks:\s*"((?:[^"\\]|\\.)*)"/.exec(src)?.[1];
+	assert.ok(shipped, "could not find the shipped newBoardStarterTasks default");
+	const lines = renderStarterTasks(JSON.parse(`"${shipped}"`), "\t");
+	assert.deepEqual(lines, ["- [ ] First task", "\t- [x] A subtask", "\t- [ ] Another subtask", "- [ ] Second task"]);
+	const roots = parse(lines);
+	assert.equal(roots[0].progress.done, 1);
+	assert.equal(roots[0].progress.total, 2);
+	assert.equal(roots[0].effectiveRole, "doing", "half-finished reads as in flight, not done");
 });
 test("an empty starter template means a board with no tasks", () => {
 	assert.deepEqual(parseStarterTasks(""), []);
@@ -891,6 +920,47 @@ test("a cancelled child no longer blocks its milestone under the shipped default
 	const roots = parse(["- [ ] Infrastructure", "\t- [x] Domain", "\t- [-] Dropped idea"], DEFAULT_COLUMNS);
 	assert.equal(roots[0].effectiveRole, "done");
 	assert.deepEqual(roots[0].progress, { done: 1, total: 1 });
+});
+
+// ---- lanes: a role with tasks always has somewhere to be ---------------------
+console.log("board lanes");
+test("every role is offered by the menu, even the ones with no column", () => {
+	// The menu is built from boardLanes(columns, ALL_ROLES). Before that it iterated the
+	// COLUMNS, so on a default board "Mark as Cancelled" did not exist: the plugin could
+	// read `[-]`, the contract it installs told agents to write `[-]`, and the human it
+	// belongs to could not produce one without editing settings.
+	const offered = boardLanes(DEFAULT_COLUMNS, ALL_ROLES);
+	assert.deepEqual(
+		[...new Set(offered.map((c) => c.role))].sort(),
+		[...ALL_ROLES].sort(),
+		"a role the format defines must be reachable from the UI",
+	);
+	const cancelled = offered.find((c) => c.role === "cancelled");
+	assert.equal(cancelled.status, "-", "and writing it must use the published character");
+});
+test("cancelled has no default lane, but never falls into To Do", () => {
+	// The old fallback was `columns[0]` — the To Do lane — so work you had explicitly
+	// decided not to do came back as the top of your backlog.
+	assert.equal(
+		DEFAULT_COLUMNS.some((c) => c.role === "cancelled"),
+		false,
+		"no permanent Cancelled lane on every board",
+	);
+	const lanes = boardLanes(DEFAULT_COLUMNS, ["todo", "cancelled"]);
+	const lane = lanes.find((c) => c.role === "cancelled");
+	assert.ok(lane, "a board WITH cancelled work draws the lane");
+	assert.notEqual(lane.id, lanes[0].id);
+});
+test("a lane is earned once, and a user's own column keeps its name", () => {
+	assert.equal(boardLanes(DEFAULT_COLUMNS, ["cancelled", "cancelled"]).length, DEFAULT_COLUMNS.length + 1);
+	const mine = [{ id: "scrapped", name: "Scrapped", status: "-", role: "cancelled" }];
+	assert.deepEqual(boardLanes(mine, ["cancelled"]), mine, "no synthetic lane shadows a real one");
+});
+test("a synthetic lane id cannot collide with a user's column id", () => {
+	// Drop targets are matched by id; a collision would route a card to the wrong write.
+	const collide = [{ id: "cancelled", name: "Nope", status: "z", role: "todo" }];
+	const lanes = boardLanes(collide, ["cancelled"]);
+	assert.equal(new Set(lanes.map((c) => c.id)).size, lanes.length);
 });
 
 // ---- what a board shows when it opens ----------------------------------------

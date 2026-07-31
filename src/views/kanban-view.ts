@@ -15,7 +15,8 @@ import {
 } from "../board-controller.ts";
 import { flatten } from "../model/parser.ts";
 import { isDerived } from "../model/rollup.ts";
-import type { ColumnDef, TaskNode } from "../model/types.ts";
+import { ALL_ROLES, type ColumnDef, type TaskNode } from "../model/types.ts";
+import { boardLanes } from "../columns.ts";
 import type TaskTreePlugin from "../main.ts";
 import {
 	breadcrumb,
@@ -34,6 +35,8 @@ import { confirmed, promptText } from "./modals.ts";
 
 export class KanbanView extends TaskTreeView {
 	private byId = new Map<string, TaskNode>();
+	/** The lanes the last render drew — columns plus any earned on demand. Drop targets. */
+	private lanes: ColumnDef[] = [];
 
 	constructor(leaf: WorkspaceLeaf, plugin: TaskTreePlugin) {
 		super(leaf, plugin);
@@ -60,9 +63,13 @@ export class KanbanView extends TaskTreeView {
 
 		const board = container.createDiv({ cls: "tt-kanban tt-scroll" });
 		const lists = new Map<string, HTMLElement>();
+		// A role with tasks and no column earns a lane on this board only — otherwise those
+		// cards fell through to columns[0] and cancelled work reappeared at the top of To Do.
+		const lanes = boardLanes(model.columns, tasks.map((n) => n.effectiveRole));
+		this.lanes = lanes;
 
-		for (const col of model.columns) {
-			const count = tasks.filter((n) => placementColumn(n, model.columns)?.id === col.id).length;
+		for (const col of lanes) {
+			const count = tasks.filter((n) => placementColumn(n, lanes)?.id === col.id).length;
 			const colEl = board.createDiv({ cls: "tt-column" });
 			const head = colEl.createDiv({ cls: "tt-column-head" });
 			if (col.color) head.style.setProperty("--tt-col-color", col.color);
@@ -81,9 +88,9 @@ export class KanbanView extends TaskTreeView {
 			lists.set(col.id, list);
 		}
 
-		const fallbackId = model.columns[0]?.id;
+		const fallbackId = lanes[0]?.id;
 		for (const node of tasks) {
-			const col = placementColumn(node, model.columns);
+			const col = placementColumn(node, lanes);
 			const list = lists.get(col?.id ?? fallbackId ?? "");
 			if (list) this.renderCard(list, node, model);
 		}
@@ -109,6 +116,7 @@ export class KanbanView extends TaskTreeView {
 	private renderCard(list: HTMLElement, node: TaskNode, model: BoardModel): void {
 		const card = list.createDiv({ cls: "tt-card" });
 		if (isDerived(node)) card.addClass("is-derived");
+		if (node.effectiveRole === "cancelled") card.addClass("is-cancelled");
 		card.dataset.id = node.id;
 		card.dataset.line = String(node.line);
 		// Our own status hook — deliberately NOT `data-task`, which Obsidian's core CSS
@@ -183,7 +191,9 @@ export class KanbanView extends TaskTreeView {
 		const colId = (evt.to).dataset.colId;
 		if (!id || !colId) return;
 		const node = this.byId.get(id);
-		const col = model.columns.find((c) => c.id === colId);
+		// `this.lanes`, not `model.columns` — an on-demand lane is a real drop target and its
+		// id exists nowhere else.
+		const col = this.lanes.find((c) => c.id === colId);
 		if (!node || !col) return;
 		await this.applyColumn(node, col, model);
 	}
@@ -203,7 +213,12 @@ export class KanbanView extends TaskTreeView {
 	private cardMenu(e: MouseEvent, node: TaskNode, model: BoardModel): void {
 		const menu = new Menu();
 		const derived = isDerived(node);
-		for (const col of model.columns) {
+		// Every ROLE, not every column. The menu was a column picker, so on a default board
+		// "Mark as Cancelled" did not exist at all: the plugin could read `[-]`, the contract
+		// it installs told agents to write `[-]`, and the human it belongs to had no way to
+		// produce one without a trip through Settings. Configuring lanes is a layout choice;
+		// it was never meant to decide which states a task is allowed to be in.
+		for (const col of boardLanes(model.columns, ALL_ROLES)) {
 			menu.addItem((i) =>
 				i
 					// Same wording as the tree's menu: the board and the tree are two lenses on
