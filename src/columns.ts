@@ -169,10 +169,6 @@ export function validateColumns(columns: ColumnDef[]): string[] {
 		} else {
 			seenStatus.set(key, c.name);
 		}
-
-		if (c.wipLimit !== undefined && (!Number.isFinite(c.wipLimit) || c.wipLimit <= 0)) {
-			errors.push(`Column "${c.name}" has an invalid WIP limit (must be a positive number).`);
-		}
 	}
 	if (!columns.some((c) => c.role === "todo")) {
 		errors.push('No column has the "todo" role; new/unstarted tasks will have nowhere to live.');
@@ -181,4 +177,23 @@ export function validateColumns(columns: ColumnDef[]): string[] {
 		errors.push('No column has the "done" role; roll-up can never report completion.');
 	}
 	return errors;
+}
+
+/**
+ * Keep only the four keys a column still has.
+ *
+ * `loadSettings` prunes unknown keys at the TOP level, which is why the settings retired in
+ * 1.2.0 actually left `data.json`. `columns` survives that pass as a known key, so anything
+ * retired *inside* a column entry — `color` and `wipLimit` in 1.8.0 — would sit in every
+ * upgrading user's file forever, re-saved on each change, looking like configuration that
+ * does something. Pure, so the migration is a unit test rather than a thing you hope works.
+ */
+export function pruneColumns(columns: ColumnDef[]): ColumnDef[] {
+	return columns.map((c) => ({ id: c.id, name: c.name, status: c.status, role: c.role }));
+}
+
+/** Whether `pruneColumns` would drop anything — i.e. data.json needs rewriting once. */
+export function columnsCarryRetiredKeys(columns: ColumnDef[]): boolean {
+	const kept = new Set(["id", "name", "status", "role"]);
+	return columns.some((c) => Object.keys(c).some((k) => !kept.has(k)));
 }

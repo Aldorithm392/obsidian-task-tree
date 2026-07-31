@@ -71,11 +71,15 @@ export class KanbanView extends TaskTreeView {
 		for (const col of lanes) {
 			const count = tasks.filter((n) => placementColumn(n, lanes)?.id === col.id).length;
 			const colEl = board.createDiv({ cls: "tt-column" });
+			// The lane's identity, so a CSS snippet can tint one column by setting
+			// --tt-col-color on it. That hook replaced the per-column color picker: Obsidian
+			// snippets are the strictly more powerful mechanism, and unlike the picker they
+			// can't quietly overwrite the role colours the board uses to mean something.
+			colEl.dataset.colId = col.id;
+			colEl.setAttribute("data-role", col.role);
 			const head = colEl.createDiv({ cls: "tt-column-head" });
-			if (col.color) head.style.setProperty("--tt-col-color", col.color);
 			head.createSpan({ cls: "tt-column-name", text: col.name });
-			const badge = head.createSpan({ cls: "tt-column-count", text: String(count) });
-			if (col.wipLimit && count > col.wipLimit) badge.addClass("tt-wip-over");
+			head.createSpan({ cls: "tt-column-count", text: String(count) });
 
 			const list = colEl.createDiv({ cls: "tt-column-cards" });
 			list.dataset.colId = col.id;

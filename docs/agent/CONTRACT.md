@@ -93,7 +93,7 @@ shows that the work exists without absorbing it.
 |---|---|---|
 | `type: task-tree` | opt-in gate | human / plugin convert command |
 | `title` | project name; the plugin renames the file to match | plugin (rename) |
-| `tt_columns` | per-board column set `{ name, status, role, color?, wipLimit? }` — **present whenever the board's char→role mapping differs from the table above**; when absent, that table applies | plugin (stamped once on deviation) / human |
+| `tt_columns` | per-board column set `{ name, status, role }` — **present whenever the board's char→role mapping differs from the table above**; when absent, that table applies | plugin (stamped once on deviation) / human |
 | `timestamp` | last-touch ISO time | human — the plugin never writes it |
 
 ## Frontmatter keys (task-note, plugin-managed)

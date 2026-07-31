@@ -246,6 +246,18 @@ cancelled work, the lane appears to hold it.
 The right-click menu offers every **role**, not every column. Which lanes you draw is a layout
 choice; it doesn't decide which states a task is allowed to be in.
 
+A column is four things — name, character, role, and where it sits. **Color isn't one of them.**
+Colour here carries meaning (blocked is loud, cancelled recedes, doing is in flight), and a
+per-column tint could only overwrite it. If you want your own palette, Obsidian already has the
+stronger tool — a CSS snippet, which can do everything a colour picker could and much more:
+
+```css
+/* Vault → Appearance → CSS snippets */
+.tt-column[data-role="doing"] { --tt-col-color: #d17a22; }
+.tt-column[data-col-id="my-lane"] { --tt-col-color: #6c5ce7; }
+.tt-chip[data-role="blocked"] { --tt-chip-color: #b02020; }
+```
+
 ### Commands
 
 - Open current file as dashboard

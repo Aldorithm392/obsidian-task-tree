@@ -40,7 +40,8 @@ function slug(name: string): string {
 
 /**
  * Read a per-board column set from `tt_columns` frontmatter, falling back to the
- * vault default when absent or malformed. Entry shape: `{ name, status, role }`.
+ * vault default when absent or malformed. Entry shape: `{ name, status, role }` — exactly
+ * what `ensureBoardColumns` stamps, and exactly what the contract publishes.
  */
 export function columnsFromFrontmatter(
 	fm: Record<string, unknown> | undefined | null,
@@ -61,11 +62,10 @@ export function columnsFromFrontmatter(
 		let id = slug(name);
 		while (usedIds.has(id)) id += "-2";
 		usedIds.add(id);
-		const col: ColumnDef = { id, name, status, role: roleStr as Role };
-		if (typeof e["color"] === "string" && e["color"]) col.color = e["color"];
-		const wip = e["wipLimit"];
-		if (typeof wip === "number" && Number.isFinite(wip) && wip > 0) col.wipLimit = Math.floor(wip);
-		cols.push(col);
+		// Only these three keys are read. A board that still carries the retired `color` /
+		// `wipLimit` keys keeps them verbatim — this is the user's file, and the plugin does
+		// not own keys it no longer understands. Ignored, never stripped.
+		cols.push({ id, name, status, role: roleStr as Role });
 	}
 	return cols.length ? cols : fallback;
 }

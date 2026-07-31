@@ -5,6 +5,7 @@ import { TreeView } from "./views/tree-view.ts";
 import { DashboardView } from "./views/dashboard-view.ts";
 import { TaskTreeView, VIEW_TYPE_DASHBOARD, VIEW_TYPE_KANBAN, VIEW_TYPE_TREE } from "./views/base-view.ts";
 import { isManagedFrontmatter, MANAGED_TYPE } from "./model/okf.ts";
+import { columnsCarryRetiredKeys, pruneColumns } from "./columns.ts";
 import { createBoardFile, reconcileBoardNotes } from "./board-controller.ts";
 import { ensureAgentInstructions } from "./agent-setup.ts";
 import { AccentFuzzyModal, confirmModal, promptText } from "./views/modals.ts";
@@ -202,8 +203,14 @@ export default class TaskTreePlugin extends Plugin {
 		if (!Array.isArray(this.settings.columns) || this.settings.columns.length === 0) {
 			this.settings.columns = DEFAULT_SETTINGS.columns.map((c) => ({ ...c }));
 		}
+		// `columns` survives the loop above as a known key, so keys retired INSIDE a column
+		// entry (color / wipLimit, 1.8.0) need their own pass or they never leave data.json.
+		const staleInColumns = columnsCarryRetiredKeys(this.settings.columns);
+		if (staleInColumns) this.settings.columns = pruneColumns(this.settings.columns);
 		// Write the pruned shape back once, so the stale keys actually leave the file.
-		if (Object.keys(stored).length !== Object.keys(known).length) await this.saveData(this.settings);
+		if (staleInColumns || Object.keys(stored).length !== Object.keys(known).length) {
+			await this.saveData(this.settings);
+		}
 	}
 
 	async saveSettings(): Promise<void> {

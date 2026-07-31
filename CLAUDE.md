@@ -57,7 +57,9 @@ src/
   settings.ts          TaskTreeSettings + DEFAULT_SETTINGS + settings tab; FROZEN (decisions the
                        plugin makes so the user needn't); getIndentUnit()
   columns.ts           char <-> column <-> role mapping; validateColumns(); boardLanes() — the
-                       lanes a board draws / the roles a menu offers (columns are a LAYOUT)
+                       lanes a board draws / the roles a menu offers (columns are a LAYOUT);
+                       pruneColumns/columnsCarryRetiredKeys — a column is {id,name,status,role}
+                       and nothing else, enforced on load
   board-controller.ts  loadBoard() (+ debounced note reconcile), ensureIds(), writeStatus/Override/
                        BlockedBy/moveNode (vault.process), task=note create/resolve, reconcileBoardNotes
   agent-setup.ts       maintains vault AGENTS.md managed section + .claude/skills/task-tree
@@ -142,6 +144,13 @@ the code, in `docs/03_FORMAT_SPEC.md`, in `docs/agent/CONTRACT.md`, in the skill
 users' vaults, and in `docs/dev/QA_CHECKLIST.md`. Before adding one, ask whether it encodes a genuine
 disagreement between two reasonable users (where my files live) or a decision the plugin declined to
 make (what an unmapped character means). The second kind belongs in `FROZEN` in `settings.ts`.
+
+**A third kind: the setting Obsidian already has.** Per-column `color` was genuine taste — and still
+went in 1.8.0, because a CSS snippet on `.tt-column[data-role]` does everything the picker did and
+more, while the picker could *only* fight the role palette that means something. Before adding an
+appearance setting, check whether a documented CSS hook is the stronger answer. When a key does get
+retired, prune it where it lives: `loadSettings` only prunes the TOP level, so anything inside
+`columns` needs `pruneColumns` or it stays in every user's `data.json` forever.
 
 Release: `npm version patch|minor|major` (bumps manifest + versions.json), push tag `X.Y.Z`
 (no leading `v`) → the GitHub Action attaches `main.js`/`manifest.json`/`styles.css`.

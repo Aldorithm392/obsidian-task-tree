@@ -114,8 +114,9 @@ export function createStatusChip(parent: HTMLElement, node: TaskNode, columns: C
 		cls: "tt-chip",
 		text: col ? col.name : roleLabel(node.effectiveRole),
 	});
+	// The chip's colour comes from its role, never from per-column configuration: `data-role`
+	// is the snippet hook, and --tt-chip-color is still the variable each rule falls back from.
 	chip.setAttribute("data-role", node.effectiveRole);
-	if (col?.color) chip.style.setProperty("--tt-chip-color", col.color);
 	return chip;
 }
 

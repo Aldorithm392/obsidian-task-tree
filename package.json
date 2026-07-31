@@ -1,6 +1,6 @@
 {
 	"name": "task-tree",
-	"version": "1.7.0",
+	"version": "1.8.0",
 	"description": "See your Markdown tasks as a tree and a Kanban board, with roll-up progress. Plain Markdown, agent-ready.",
 	"main": "main.js",
 	"type": "module",

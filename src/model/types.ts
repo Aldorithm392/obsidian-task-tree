@@ -26,10 +26,6 @@ export interface ColumnDef {
 	status: string;
 	/** The semantic role this column represents. */
 	role: Role;
-	/** Optional accent color (any CSS color). */
-	color?: string;
-	/** Optional work-in-progress limit (soft, advisory). */
-	wipLimit?: number;
 }
 
 /**

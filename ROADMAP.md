@@ -234,7 +234,33 @@ commit as the code.
 - **One line of rule, not eight badges.** The ordering is stated once above the list; a row with no
   leverage gets no badge, because the absence is information too.
 
-## Next (v1.8+ — candidates, not commitments)
+## Shipped (v1.8 — the last cut, and it was appearance)
+
+- **Per-column `color` and `wipLimit` removed.** These were the one cut 1.2.0 left open, because
+  colour is genuine taste and the subtraction test ("a real disagreement between two reasonable
+  users") passes for it. They still go, for a reason that test doesn't capture: **Obsidian already
+  ships the stronger mechanism.** A CSS snippet does everything a per-column picker did and much
+  more, and unlike the picker it can't quietly overwrite the role palette — blocked is loud,
+  cancelled recedes, doing is in flight — that 1.6.0 spent a release making mean something.
+- **The capability survives; only the setting is gone.** `.tt-column` now carries `data-role` and
+  `data-col-id`, and `--tt-col-color` / `--tt-chip-color` remain the documented variables with their
+  theme fallbacks. Three lines of snippet, in the README.
+- **`wipLimit` was advisory about a methodology this plugin doesn't run.** It tinted a count when a
+  lane held more cards than a number you set once and then never saw again. What it was reaching for
+  — *am I overcommitted* — the dashboard answers better and without configuration: the summary bar
+  counts per lane, and 1.7.0's "Next up" puts in-flight work in its own tier.
+- **The settings row went from seven controls to four.** Name, character, role, remove.
+- **Retired keys actually leave `data.json`.** `loadSettings` prunes unknown keys at the top level,
+  which is why the 1.2.0 removals really left the file — but `columns` survives that pass as a known
+  key, so `color`/`wipLimit` would have sat inside every upgrading user's column entries forever,
+  re-saved on each change, looking like configuration that does something. `pruneColumns` is pure and
+  idempotent, so the migration is a unit test rather than a thing you hope works.
+- **A board's own `tt_columns` is read, never rewritten.** A hand- or agent-authored `color:` key in
+  a board file is now ignored — and deliberately *not* stripped. The plugin doesn't own keys it
+  dropped, and silently editing a user's frontmatter to tidy up after itself is the behaviour
+  `docs/00_VISION.md` forbids.
+
+## Next (v1.9+ — candidates, not commitments)
 
 - **Diagram packing, properly.** Measured (see `docs/dev/VISUAL_HARNESS.md`): canvas height is
   leaf-bound and completely insensitive to `align-items`, so no CSS tweak will do it. A genuinely

@@ -1,7 +1,7 @@
 {
 	"id": "task-tree",
 	"name": "Task Tree",
-	"version": "1.7.0",
+	"version": "1.8.0",
 	"minAppVersion": "1.7.2",
 	"description": "Turns the nested checklists you already wrote into a tree and a Kanban board. A parent's state is derived from its children and never written into the file, so your Markdown stays the truth — for you and for an AI agent.",
 	"author": "Aldorithm392",

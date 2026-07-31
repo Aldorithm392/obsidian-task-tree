@@ -29,6 +29,8 @@ import {
 	deviatesFromPublished,
 	resolveStatus,
 	boardLanes,
+	columnsCarryRetiredKeys,
+	pruneColumns,
 } from "../src/columns.ts";
 import { ALL_ROLES } from "../src/model/types.ts";
 import { columnsFromFrontmatter } from "../src/model/okf.ts";
@@ -420,27 +422,44 @@ test("duplicate status character is rejected", () => {
 	];
 	assert.ok(validateColumns(bad).some((e) => e.includes("status character")));
 });
-test("non-positive WIP limit is rejected; positive passes", () => {
-	const cols = [
-		{ id: "todo", name: "To Do", status: " ", role: "todo" },
-		{ id: "done", name: "Done", status: "x", role: "done", wipLimit: 0 },
-	];
-	assert.ok(validateColumns(cols).some((e) => e.includes("WIP limit")));
-	cols[1].wipLimit = 3;
-	assert.deepEqual(validateColumns(cols), []);
-});
-test("tt_columns round-trips color and wipLimit", () => {
+test("a column carries exactly four keys — color and wipLimit are gone (1.8.0)", () => {
 	const fm = {
 		tt_columns: [
 			{ name: "To Do", status: " ", role: "todo", color: "#8888ff", wipLimit: 4 },
-			{ name: "Done", status: "x", role: "done", wipLimit: 0 }, // invalid limit → dropped
+			{ name: "Done", status: "x", role: "done" },
 		],
 	};
 	const cols = columnsFromFrontmatter(fm, DEFAULT_COLUMNS);
-	assert.equal(cols[0].color, "#8888ff");
-	assert.equal(cols[0].wipLimit, 4);
-	assert.equal(cols[1].color, undefined);
-	assert.equal(cols[1].wipLimit, undefined);
+	// The retired keys are IGNORED on read. They are not stripped from the user's file —
+	// the plugin never rewrites an existing tt_columns, and doesn't own keys it dropped.
+	assert.deepEqual(Object.keys(cols[0]).sort(), ["id", "name", "role", "status"]);
+	assert.equal(cols[0].name, "To Do", "the keys it still understands read normally");
+	assert.equal(cols[0].role, "todo");
+	assert.equal(cols.length, 2, "an entry is never rejected for carrying a retired key");
+});
+test("retired per-column keys are pruned out of data.json exactly once", () => {
+	const stored = [
+		{ id: "todo", name: "To Do", status: " ", role: "todo", color: "#8888ff" },
+		{ id: "done", name: "Done", status: "x", role: "done", wipLimit: 3 },
+	];
+	assert.equal(columnsCarryRetiredKeys(stored), true);
+	const pruned = pruneColumns(stored);
+	assert.deepEqual(pruned, [
+		{ id: "todo", name: "To Do", status: " ", role: "todo" },
+		{ id: "done", name: "Done", status: "x", role: "done" },
+	]);
+	// Idempotent: a clean file must not trigger a rewrite on every load.
+	assert.equal(columnsCarryRetiredKeys(pruned), false);
+	assert.deepEqual(pruneColumns(pruned), pruned);
+});
+test("a column set with no retired keys still validates", () => {
+	assert.deepEqual(
+		validateColumns([
+			{ id: "todo", name: "To Do", status: " ", role: "todo" },
+			{ id: "done", name: "Done", status: "x", role: "done" },
+		]),
+		[],
+	);
 });
 
 // ---- writer: CRUD ------------------------------------------------------------

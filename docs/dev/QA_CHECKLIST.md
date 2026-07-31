@@ -21,9 +21,8 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
 - [ ] Tree list: collapse/expand; collapse survives an Obsidian restart (stable-id nodes).
 - [ ] Tree diagram: hierarchy connectors; inverted toggle flips goal to the right; dependency
   overlay draws dashed curves (red = held); overlay toggle hides them; both persist.
-- [ ] Kanban: drag between columns flips exactly one status char (check the file diff!); WIP-exceeded
-  column shows the over-limit style; column color tints header and chips. An empty column shows the
-  dashed drop target, and it vanishes as soon as a card lands there.
+- [ ] Kanban: drag between columns flips exactly one status char (check the file diff!). An empty
+  column shows the dashed drop target, and it vanishes as soon as a card lands there.
 - [ ] Context menus show a distinct icon per role, not five checks.
 - [ ] Dashboard: stats, Blockers, "Waiting on dependencies" (when edges are held), Next up.
 - [ ] Markdown in task text renders (a `[[link]]`, `**bold**`, a `#tag`); clicking a link opens it;
@@ -170,6 +169,20 @@ With `examples/projects/website-redesign.md` open as a dashboard:
   would still be held by *Copywriting*, so it must **not** count as 2.
 - [ ] Set any task to `[/]`: it jumps above every not-started task, however much leverage they
   carry.
+
+## Column colour is a snippet now (1.8.0)
+
+- [ ] Settings → a column row has exactly four controls: name, character, role, remove. No colour
+  picker, no WIP box, no eraser button.
+- [ ] **Upgrade path, with a real pre-1.8 `data.json`:** add `"color": "#8888ff"` and
+  `"wipLimit": 3` to two entries of `columns`, restart Obsidian, then reopen `data.json` — both
+  keys are gone and every other setting survived. Restart again: the file must **not** be
+  rewritten a second time (the prune is idempotent).
+- [ ] A board whose frontmatter carries `tt_columns` with a hand-written `color:` key still opens,
+  the column reads normally, and **the key is still in the file afterwards** — ignored, never
+  stripped.
+- [ ] The README snippet works verbatim as a vault CSS snippet: `.tt-column[data-role="doing"]`
+  tints that lane's header rule, and `.tt-chip[data-role="blocked"]` retints the chip.
 
 ## Regression guard
 
