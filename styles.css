@@ -1042,3 +1042,13 @@ h2.tt-dash-title {
 	color: var(--text-muted);
 	font-variant-numeric: tabular-nums;
 }
+
+/* Worded dependency badge: "waiting on 2" beats a bare glyph on a busy row. */
+.tt-dep-text {
+	font-size: var(--font-ui-smaller);
+}
+/* A derived checkbox is a readout, not a control — it must not invite a click. */
+.tt-checkbox.is-derived {
+	cursor: default;
+	opacity: 0.65;
+}

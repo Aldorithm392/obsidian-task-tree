@@ -325,16 +325,24 @@ export abstract class TaskTreeView extends ItemView {
 		this.registerDomEvent(input, "blur", () => finish(true));
 	}
 
-	/** "Blocked by…" + "Clear dependencies" — shared by every view's context menu. */
+	/**
+	 * "Waiting on…" + "Clear" — shared by every view's context menu.
+	 *
+	 * The FIELD stays `tt-blocked-by` (it is the format, and renaming it would break every
+	 * board on disk). The words the human reads change: "blocked" was carrying four
+	 * different meanings at once — a status character, a rolled-up parent, an unfinished
+	 * dependency, and "something below is blocked" — so the one that is really *waiting on
+	 * another task* says that instead.
+	 */
 	protected addDependencyMenuItems(menu: Menu, node: TaskNode, model: BoardModel): void {
 		if (!node.isTask) return;
 		menu.addItem((i) =>
-			i.setTitle("Blocked by…").setIcon("link").onClick(() => this.pickDependency(node, model)),
+			i.setTitle("Waiting on…").setIcon("link").onClick(() => this.pickDependency(node, model)),
 		);
 		if (node.blockedBy.length > 0) {
 			menu.addItem((i) =>
 				i
-					.setTitle("Clear dependencies")
+					.setTitle("Stop waiting on other tasks")
 					.setIcon("unlink")
 					.onClick(() => void writeBlockedBy(this.plugin, model.file, node.line, [])),
 			);

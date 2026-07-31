@@ -141,18 +141,45 @@ export function createProgressBadge(parent: HTMLElement, node: TaskNode): HTMLEl
 export function createNoteProgressBadge(parent: HTMLElement, node: TaskNode): HTMLElement | null {
 	const p = node.noteProgress;
 	if (!p || p.total <= 0) return null;
-	const badge = parent.createSpan({ cls: "tt-note-progress" });
-	if (p.done < p.total) badge.addClass("is-open");
+	const open = p.total - p.done;
+	// Silent once the notes are finished: a badge reading 11/11 is a row asking for
+	// attention it doesn't need. This signal exists to surface work you can't see.
+	if (open <= 0) return null;
+
+	const badge = parent.createSpan({ cls: "tt-note-progress is-open" });
 	setIcon(badge, "list-checks");
-	badge.createSpan({ cls: "tt-note-progress-text", text: `${p.done}/${p.total}${p.truncated ? "+" : ""}` });
+	// Worded, never a bare fraction. The row already carries the roll-up's `K/D`, and two
+	// adjacent fractions in the same size and colour counting categorically different
+	// things — direct children vs. checklist items several notes away — is the row's worst
+	// ambiguity: identical form, different referent.
+	badge.createSpan({ cls: "tt-note-progress-text", text: `${open}${p.truncated ? "+" : ""} in notes` });
 	const where =
 		p.notes === 1 ? "its note" : `its note and ${p.notes - 1} linked note${p.notes === 2 ? "" : "s"}`;
 	badge.setAttribute(
 		"aria-label",
-		`${p.done} of ${p.total} checklist items done in ${where}` +
+		`${open} checklist item${open === 1 ? "" : "s"} still open in ${where}` +
 			(p.truncated ? " — deeper notes not counted" : ""),
 	);
 	return badge;
+}
+
+/**
+ * The ⚠ for "something below this is blocked".
+ *
+ * Only shown when the row doesn't already say so. With blocked surfacing to parents, a
+ * blocked leaf turns its whole ancestor chain blocked, and every one of those rows already
+ * carries a Blocked chip — the ⚠ was a second glyph repeating it. The case it genuinely
+ * earns is the opposite one: an ancestor overridden to done or cancelled, whose chip now
+ * *hides* the blocked work underneath. That is worth a mark.
+ */
+export function createBlockedBelowMark(parent: HTMLElement, node: TaskNode): HTMLElement | null {
+	if (!node.hasBlockedDescendant || node.effectiveRole === "blocked") return null;
+	const warn = parent.createSpan({
+		cls: "tt-warn",
+		attr: { "aria-label": "A subtask below this one is blocked, and this row's state is hiding it" },
+	});
+	setIcon(warn, "alert-triangle");
+	return warn;
 }
 
 export function createOverrideBadge(parent: HTMLElement, role: Role): HTMLElement {
@@ -165,9 +192,14 @@ export function createOverrideBadge(parent: HTMLElement, role: Role): HTMLElemen
 }
 
 /**
- * Dependency badge for a task with `tt-blocked-by` edges. Red (ban icon) while an
- * unfinished dependency holds it, plain link icon once everything released; warns
- * on unresolved ids and cycles.
+ * Dependency badge for a task with `tt-blocked-by` edges. Worded while something is
+ * actually holding it, a quiet link icon once everything released; warns on unresolved
+ * ids and cycles.
+ *
+ * It says "waiting on", never "blocked". `blocked` is a ROLE — a status character, a
+ * roll-up result — and a dependency deliberately never becomes one: it must not change a
+ * parent's derived state, or a board would stop being recomputable from its own file.
+ * Two different things sharing one word is how that boundary gets blurred in a user's head.
  */
 export function createDependencyBadge(
 	parent: HTMLElement,
@@ -179,7 +211,7 @@ export function createDependencyBadge(
 	const problems: string[] = [];
 	if (deps.held.length > 0) {
 		b.addClass("tt-dep-held");
-		problems.push(`Waiting on: ${deps.held.map((d) => taskDisplayText(d) || d.id).join(", ")}`);
+		problems.push(`Waiting on ${deps.held.map((d) => taskDisplayText(d) || d.id).join(", ")}`);
 	}
 	if (deps.unresolved.length > 0) {
 		b.addClass("tt-dep-warn");
@@ -189,10 +221,15 @@ export function createDependencyBadge(
 		b.addClass("tt-dep-warn");
 		problems.push("Dependency cycle");
 	}
-	setIcon(b, deps.held.length > 0 ? "ban" : "link");
+	setIcon(b, deps.held.length > 0 ? "hourglass" : "link");
+	// Worded when it is actually holding something up: one more silent glyph on a row that
+	// already carries several is a row nobody reads.
+	if (deps.held.length > 0) {
+		b.createSpan({ cls: "tt-dep-text", text: `waiting on ${deps.held.length}` });
+	}
 	b.setAttribute(
 		"aria-label",
-		problems.length > 0 ? problems.join(" · ") : `Depends on ${node.blockedBy.length} task${node.blockedBy.length === 1 ? "" : "s"} (all released)`,
+		problems.length > 0 ? problems.join(" · ") : `Waited on ${node.blockedBy.length} task${node.blockedBy.length === 1 ? "" : "s"} — all released`,
 	);
 	return b;
 }

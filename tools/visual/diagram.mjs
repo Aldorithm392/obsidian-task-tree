@@ -50,7 +50,7 @@ function rowContent(node) {
 			: "";
 	const noteBadge = node.notes
 		? `<span class="tt-note-progress is-open"><svg width="13" height="13"></svg>` +
-			`<span class="tt-note-progress-text">${node.notes}</span></span>`
+			`<span class="tt-note-progress-text">${node.notes} in notes</span></span>`
 		: "";
 	return (
 		`<span class="tt-drag-handle"><svg width="14" height="14"></svg></span>` +
@@ -101,7 +101,7 @@ export const UNEVEN_TREE = [
 		{ id: "t-a1", text: "Stakeholder interviews", role: "done", roleName: "Done" },
 		{ id: "t-a2", text: "Analytics audit", role: "done", roleName: "Done" },
 	] },
-	{ id: "t-b", text: "Design", role: "doing", roleName: "Doing", progress: "1/4", notes: "3/11", children: [
+	{ id: "t-b", text: "Design", role: "doing", roleName: "Doing", progress: "1/4", notes: "8", children: [
 		{ id: "t-b1", text: "Wireframes", role: "done", roleName: "Done" },
 		{ id: "t-b2", text: "Visual language", role: "doing", roleName: "Doing", children: [
 			{ id: "t-b2a", text: "Typography scale", role: "todo", roleName: "To Do" },

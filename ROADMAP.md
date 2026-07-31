@@ -148,7 +148,24 @@ commit as the code.
   marking them stale, which is worse than maintaining them.
 - **`tt_rollup` deleted from the spec.** It was documented for a release and never existed in code.
 
-## Next (v1.4+ — candidates, not commitments)
+## Shipped (v1.4 — derived state stops being clickable)
+
+- **The plugin now obeys the rule it teaches.** `AGENTS.md` invariant 8 tells agents never to mark a
+  parent's checkbox done — and three gestures did exactly that, writing `[tt-override:: done]`
+  without ever saying "override": the parent checkbox, a Kanban drag, and "Mark as Done". A derived
+  parent's checkbox is now a readout that explains itself; parent cards are out of the drag pool but
+  stay visible with their progress; and the menu names the action, "Override to …" vs "Mark as …".
+  README's promise that *a parent can never lie about being complete* is now structurally true
+  rather than documentationally true.
+- **The derivation predicate is shared.** `isDerived` lives beside `computeRollup` and is the exact
+  same test, so the UI cannot disagree with roll-up about which rows are the user's to set. It is
+  deliberately not `isLeaf`, which counts non-task bullets.
+- **Row noise down.** Note-progress reads "8 in notes" and disappears when finished — two adjacent
+  `K/D` fractions counting categorically different things was the row's worst ambiguity. ⚠ shows only
+  where the chip isn't already Blocked, i.e. where an override is hiding blocked work.
+- **One word, one meaning.** Dependencies say "waiting on"; `blocked` goes back to being a role.
+
+## Next (v1.5+ — candidates, not commitments)
 
 - **Diagram packing, properly.** Measured (see `docs/dev/VISUAL_HARNESS.md`): canvas height is
   leaf-bound and completely insensitive to `align-items`, so no CSS tweak will do it. A genuinely

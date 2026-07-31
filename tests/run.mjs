@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { parseLine } from "../src/model/line.ts";
 import { buildTree } from "../src/model/parser.ts";
-import { computeRollup } from "../src/model/rollup.ts";
+import { computeRollup, isDerived } from "../src/model/rollup.ts";
 import {
 	setStatusInText,
 	setOverrideInText,
@@ -890,6 +890,43 @@ test("a cancelled child no longer blocks its milestone under the shipped default
 	const roots = parse(["- [ ] Infrastructure", "\t- [x] Domain", "\t- [-] Dropped idea"], DEFAULT_COLUMNS);
 	assert.equal(roots[0].effectiveRole, "done");
 	assert.deepEqual(roots[0].progress, { done: 1, total: 1 });
+});
+
+// ---- derived state is not the user's to set directly -------------------------
+console.log("derived state");
+test("isDerived matches computeRollup exactly — task children, not isLeaf", () => {
+	// The trap: `isLeaf` counts non-task bullets, so a task carrying a plain note bullet
+	// is not a leaf — yet its state is entirely its own and its checkbox must still work.
+	const roots = parse(["- [ ] Has a note bullet", "\t- just a note", "- [ ] Has a subtask", "\t- [ ] Real child"]);
+	const [noteOnly, realParent] = roots;
+	assert.equal(noteOnly.isLeaf, false, "a non-task bullet still makes it a non-leaf");
+	assert.equal(isDerived(noteOnly), false, "…but its state is its own, so it stays settable");
+	assert.equal(isDerived(realParent), true);
+	assert.equal(isDerived(realParent.children[0]), false);
+});
+test("a derived node's state really is a function of its children", () => {
+	const roots = parse(["- [ ] Milestone", "\t- [x] One", "\t- [x] Two"]);
+	assert.equal(isDerived(roots[0]), true);
+	assert.equal(roots[0].effectiveRole, "done");
+	assert.equal(roots[0].statusChar, " ", "the parent's own character was never touched");
+});
+test("the only way a parent disagrees with its children is a visible override", () => {
+	const plain = parse(["- [ ] Milestone", "\t- [ ] Loose end"]);
+	assert.equal(plain[0].effectiveRole, "todo");
+	const overridden = parse(["- [x] Milestone [tt-override:: done] ^t-m", "\t- [ ] Loose end"]);
+	assert.equal(overridden[0].effectiveRole, "done");
+	assert.equal(overridden[0].derivedRole, "todo", "the derivation is still visible underneath");
+	assert.equal(overridden[0].override, "done", "and the disagreement is written on the line");
+});
+test("a dependency hold never becomes the blocked ROLE", () => {
+	// If it did, a parent would read `doing` from roll-up while its child read `blocked`
+	// from the renderer — and dragging out of a Blocked column would write a character
+	// that was never true.
+	const roots = parse(["- [ ] Staging ^t-s", "- [ ] QA [tt-blocked-by:: t-s] ^t-qa"]);
+	resolveEdges(roots);
+	assert.equal(roots[1].isDependencyBlocked, true);
+	assert.equal(roots[1].effectiveRole, "todo", "held, but its role is untouched");
+	assert.equal(roots[1].statusChar, " ");
 });
 
 // ---- a board that says what it means -----------------------------------------

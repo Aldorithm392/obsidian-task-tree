@@ -20,6 +20,19 @@ export function computeRollup(roots: TaskNode[], opts: RollupOptions): void {
 	for (const r of roots) visit(r, opts);
 }
 
+/**
+ * Whether this node's state is DERIVED from its children rather than being its own.
+ *
+ * Deliberately `children.some(isTask)` — exactly the predicate `visit` uses below. It is NOT
+ * `isLeaf`, which counts non-task bullets: a task with a plain `- note to self` under it is
+ * not a leaf, yet its state is still entirely its own. Anything in the UI that asks "may the
+ * user set this directly?" must ask this, or it will disagree with roll-up on precisely the
+ * rows where being wrong is worst.
+ */
+export function isDerived(node: TaskNode): boolean {
+	return node.children.some((c) => c.isTask);
+}
+
 function visit(node: TaskNode, opts: RollupOptions): void {
 	for (const child of node.children) visit(child, opts);
 

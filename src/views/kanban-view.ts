@@ -14,10 +14,12 @@ import {
 	type TaskNoteMeta,
 } from "../board-controller.ts";
 import { flatten } from "../model/parser.ts";
+import { isDerived } from "../model/rollup.ts";
 import type { ColumnDef, TaskNode } from "../model/types.ts";
 import type TaskTreePlugin from "../main.ts";
 import {
 	breadcrumb,
+	createBlockedBelowMark,
 	createDependencyBadge,
 	createNoteProgressBadge,
 	createOverrideBadge,
@@ -93,6 +95,12 @@ export class KanbanView extends TaskTreeView {
 				animation: 150,
 				ghostClass: "tt-ghost",
 				draggable: ".tt-card",
+				// A parent card is a readout of its children. Dragging one across columns wrote
+				// `[tt-override:: done]` — the most natural gesture on a board, silently
+				// producing the one thing the format calls an explicit human decision. The card
+				// stays visible, with its progress; overriding it now goes through the menu,
+				// where the action says its own name.
+				filter: ".tt-card.is-derived",
 				onEnd: (evt) => void this.onDrop(evt, model),
 			});
 		}
@@ -100,6 +108,7 @@ export class KanbanView extends TaskTreeView {
 
 	private renderCard(list: HTMLElement, node: TaskNode, model: BoardModel): void {
 		const card = list.createDiv({ cls: "tt-card" });
+		if (isDerived(node)) card.addClass("is-derived");
 		card.dataset.id = node.id;
 		card.dataset.line = String(node.line);
 		// Our own status hook — deliberately NOT `data-task`, which Obsidian's core CSS
@@ -127,11 +136,15 @@ export class KanbanView extends TaskTreeView {
 		createDependencyBadge(meta, node, dependencyInfo(node, model.graph));
 		createProgressBadge(meta, node);
 		createNoteProgressBadge(meta, node);
-		if (!node.isLeaf) meta.createSpan({ cls: "tt-parent-tag", text: "group" });
-		if (node.hasBlockedDescendant) {
-			const warn = meta.createSpan({ cls: "tt-warn", attr: { "aria-label": "A subtask below is blocked" } });
-			setIcon(warn, "alert-triangle");
+		if (isDerived(node)) {
+			// Says why the card won't drag, rather than leaving it feeling broken.
+			meta.createSpan({
+				cls: "tt-parent-tag",
+				text: "derived",
+				attr: { "aria-label": "This state comes from its subtasks — override it from the right-click menu" },
+			});
 		}
+		createBlockedBelowMark(meta, node);
 		const noteBtn = meta.createSpan({ cls: "tt-row-btn tt-note-btn", attr: { "aria-label": "Open / create the task's note" } });
 		setIcon(noteBtn, "file-text");
 		this.registerDomEvent(noteBtn, "click", (e) => {
@@ -176,7 +189,9 @@ export class KanbanView extends TaskTreeView {
 	}
 
 	private async applyColumn(node: TaskNode, col: ColumnDef, model: BoardModel): Promise<void> {
-		if (node.isLeaf) {
+		// `!isDerived`, not `!isLeaf`: a task carrying a plain `- note` bullet is not a leaf,
+		// but its state is its own and a plain status write is the correct edit.
+		if (!isDerived(node)) {
 			await writeStatus(this.plugin, model.file, node.line, col.status);
 		} else if (col.role === node.derivedRole) {
 			await clearOverride(this.plugin, model.file, node.line);
@@ -187,13 +202,14 @@ export class KanbanView extends TaskTreeView {
 
 	private cardMenu(e: MouseEvent, node: TaskNode, model: BoardModel): void {
 		const menu = new Menu();
+		const derived = isDerived(node);
 		for (const col of model.columns) {
 			menu.addItem((i) =>
 				i
 					// Same wording as the tree's menu: the board and the tree are two lenses on
 					// one structure, and the same action was called two different things
 					// depending on which lens the user happened to be standing in.
-					.setTitle(`Mark as ${col.name}`)
+					.setTitle(derived ? `Override to ${col.name}` : `Mark as ${col.name}`)
 					// One glyph per role: five identical arrows read as one blur.
 					.setIcon(roleIcon(col.role))
 					.onClick(() => void this.applyColumn(node, col, model)),

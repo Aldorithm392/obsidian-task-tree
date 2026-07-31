@@ -61,7 +61,8 @@ One structural edit per write. Keep them separate and each edit stays reviewable
    cross-reference, not the task-note. Don't append a second trailing link.
 8. **Don't mark a parent's checkbox done.** Finish the leaves; the parent's state follows from
    roll-up. If a milestone must close with loose ends, that's what `[tt-override:: done]` is for —
-   an explicit, visible decision.
+   an explicit, visible decision. The plugin now holds itself to this too: a derived parent's
+   checkbox is a readout, and every gesture that writes an override says the word "override".
 
 ## Dependencies
 

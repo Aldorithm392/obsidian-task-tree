@@ -25,7 +25,7 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
 - [ ] Kanban: drag between columns flips exactly one status char (check the file diff!); WIP-exceeded
   column shows the over-limit style; column color tints header and chips. An empty column shows the
   dashed drop target, and it vanishes as soon as a card lands there.
-- [ ] Context menus: "Mark as …" / "Move to …" show a distinct icon per role, not five checks.
+- [ ] Context menus show a distinct icon per role, not five checks.
 - [ ] Dashboard: stats, Blockers, "Waiting on dependencies" (when edges are held), Next up.
 - [ ] Full focus: open a subtree, edit inside it, exit.
 - [ ] Markdown in task text renders (a `[[link]]`, `**bold**`, a `#tag`); clicking a link opens it;
@@ -39,8 +39,8 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
 - [ ] Context menu: mark as each column (same wording in tree and Kanban), override set + clear, move up/down, indent/outdent,
   add subtask/sibling, rename, tag, delete (confirm on subtree).
 - [ ] Drag-reparent (list grip, diagram, columns) — children travel; only indent/order changes.
-- [ ] "Blocked by…" picker: adds `[tt-blocked-by:: …]` before `^id`; picking again removes; "Clear
-  dependencies" removes the field; badge + overlay update.
+- [ ] "Waiting on…" picker: adds `[tt-blocked-by:: …]` before `^id`; picking again removes; "Stop
+  waiting on other tasks" removes the field; badge + overlay update.
 - [ ] Rename board (header / goal box): frontmatter `title` set AND the file renamed; a `[[link]]`
   to the board from another note still resolves; the open view stays bound.
 
@@ -54,11 +54,12 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
 
 ## Depth: recursive note progress
 
-- [ ] Add `- [ ]` / `- [x]` items to a task's note → the board task shows a `K/N` badge; ticking an
+- [ ] Add `- [ ]` / `- [x]` items to a task's note → the board task reads "N in notes"; ticking an
   item in the note updates it, and **no board status character changes**.
 - [ ] Link a second `type: task-note` from that note, give it checklists → the badge counts both;
   the dashboard lists the task under "Open inside linked notes".
 - [ ] Set the depth to 1 → the badge drops the deeper counts and shows a trailing `+`.
+- [ ] Finish every checklist item in the notes → the badge disappears entirely.
 - [ ] Link two notes to each other (a cycle) → the badge is finite and the view still renders.
 - [ ] Link a note to a plain note that is NOT `type: task-note` → its checklists are ignored.
 - [ ] Turn "Show note progress" off → every badge disappears; nothing else changes.
@@ -111,6 +112,23 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
   `distance_to_main` or `path`.
 - [ ] An OLD task-note that still carries those three: they are removed on the next board render,
   and the note's body is untouched.
+
+## Derived state is not directly settable (1.4.0)
+
+- [ ] Click a parent's checkbox: **nothing is written** (check the file) and a notice explains what
+  it derives from. Same for Space on a focused parent row.
+- [ ] A task with only a plain `- note` bullet under it is NOT derived — its checkbox still works.
+- [ ] Kanban: a parent card does not drag between columns; a leaf still does. The card shows a
+  "derived" tag rather than looking broken.
+- [ ] Right-click a parent: the items read **"Override to …"**. Right-click a leaf: **"Mark as …"**.
+  Both views use the same wording.
+- [ ] Overriding from the menu still writes `[tt-override:: role]` on the line, and "Clear manual
+  override" removes it.
+- [ ] A row with note work reads "N in notes", never a second bare `K/D` next to the roll-up's.
+  A task whose notes are fully done shows no note badge at all.
+- [ ] ⚠ appears only where the row's own chip is NOT already Blocked — i.e. on an ancestor
+  overridden to done/cancelled that is hiding blocked work underneath.
+- [ ] The dependency badge reads "waiting on N"; the menu says "Waiting on…".
 
 ## Regression guard
 

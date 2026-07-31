@@ -98,7 +98,9 @@ tags: [project, marketing]
   (`1/2` + a small bar). A parent can never lie about being complete.
 - **Manual override:** you can still close a milestone with loose ends. `[tt-override:: done]` records
   that choice *visibly*, so three weeks later you remember you closed it on purpose — and an agent can
-  see it too.
+  see it too. It is the *only* way a parent may disagree with its children, so it's the only gesture
+  that writes one: a parent's checkbox is a readout, not a switch, and the menu item that overrides
+  it says "Override to …" rather than pretending to be an ordinary state change.
 - **Two gestures, kept apart.** Dragging a card between **Kanban columns** changes only that node's
   state (children don't travel). Dragging a node in the **tree** restructures it (the whole branch
   travels). See [`docs/03_FORMAT_SPEC.md`](docs/03_FORMAT_SPEC.md).

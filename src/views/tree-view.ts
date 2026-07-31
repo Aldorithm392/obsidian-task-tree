@@ -1,4 +1,4 @@
-import { Menu, setIcon, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
+import { Menu, Notice, setIcon, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
 import { TaskTreeView, VIEW_TYPE_KANBAN, VIEW_TYPE_TREE } from "./base-view.ts";
 import type { BoardModel } from "../board-controller.ts";
 import {
@@ -17,9 +17,11 @@ import {
 } from "../board-controller.ts";
 import { flatten } from "../model/parser.ts";
 import { computeSummary } from "../model/insights.ts";
+import { isDerived } from "../model/rollup.ts";
 import type { TaskNode, TreeLayout } from "../model/types.ts";
 import type TaskTreePlugin from "../main.ts";
 import {
+	createBlockedBelowMark,
 	createDependencyBadge,
 	createNoteProgressBadge,
 	createOverrideBadge,
@@ -29,6 +31,7 @@ import {
 	placementColumn,
 	renderTaskText,
 	roleIcon,
+	roleLabel,
 	taskDisplayText,
 } from "./card.ts";
 import { canonicalStatusForRole } from "../columns.ts";
@@ -281,6 +284,15 @@ export class TreeView extends TaskTreeView {
 			const box = host.createEl("input", { type: "checkbox", cls: "tt-checkbox" });
 			box.checked = node.effectiveRole === "done";
 			box.indeterminate = node.effectiveRole === "doing"; // native "in progress" dash
+			// A derived parent's checkbox is a READOUT, not a control. Clicking it used to
+			// write `[tt-override:: done]` — silently, with no confirmation and without ever
+			// saying the word "override" — which is the exact thing AGENTS.md forbids agents
+			// from doing, and it undermined the one promise the product is built on: that a
+			// parent cannot lie about being complete.
+			if (isDerived(node)) {
+				box.addClass("is-derived");
+				box.setAttribute("aria-label", "Derived from this task's children");
+			}
 			this.registerDomEvent(box, "click", (e) => {
 				e.preventDefault();
 				e.stopPropagation();
@@ -309,10 +321,7 @@ export class TreeView extends TaskTreeView {
 		createNoteProgressBadge(meta, node);
 		if (node.override) createOverrideBadge(meta, node.override);
 		createDependencyBadge(meta, node, dependencyInfo(node, model.graph));
-		if (node.hasBlockedDescendant) {
-			const warn = meta.createSpan({ cls: "tt-warn", attr: { "aria-label": "A subtask below is blocked" } });
-			setIcon(warn, "alert-triangle");
-		}
+		createBlockedBelowMark(meta, node);
 
 		if (hasChildren) {
 			const focusBtn = meta.createSpan({ cls: "tt-focus-btn", attr: { "aria-label": "Open in full focus" } });
@@ -972,7 +981,9 @@ export class TreeView extends TaskTreeView {
 	}
 
 	private cycle(node: TaskNode, model: BoardModel): Promise<void> {
-		if (node.isLeaf) {
+		// `!isDerived`, not `isLeaf`: a task carrying a plain `- note` bullet is not a leaf,
+		// but its state is still its own and its checkbox must keep working.
+		if (!isDerived(node)) {
 			// A checkbox is a checkbox: one click toggles done. Stepping through every column
 			// was an opt-in setting that made the most familiar control in the product mean
 			// something no other checkbox in Obsidian means. Other states live on the Kanban
@@ -980,8 +991,20 @@ export class TreeView extends TaskTreeView {
 			const role = node.effectiveRole === "done" ? "todo" : "done";
 			return writeStatus(this.plugin, model.file, node.line, canonicalStatusForRole(role, model.columns));
 		}
-		if (node.override) return clearOverride(this.plugin, model.file, node.line);
-		return writeOverride(this.plugin, model.file, node.line, "done", model.columns);
+		// Derived: explain instead of writing. The override still exists and is one
+		// right-click away — but it now happens through a gesture that names itself.
+		this.explainDerived(node);
+		return Promise.resolve();
+	}
+
+	/** Say why this checkbox didn't move, and where the deliberate version lives. */
+	private explainDerived(node: TaskNode): void {
+		const title = taskDisplayText(node) || "This task";
+		const { done, total } = node.progress;
+		const state = node.override
+			? `is overridden to ${roleLabel(node.override)}`
+			: `follows its children — ${done} of ${total} done`;
+		new Notice(`"${title}" ${state}. Finish the subtasks, or right-click to override it.`, 6000);
 	}
 
 	private siblings(node: TaskNode, model: BoardModel): TaskNode[] {
@@ -1188,14 +1211,19 @@ export class TreeView extends TaskTreeView {
 	/** The node context menu, built but not shown — the keyboard opens it by position. */
 	private buildNodeMenu(node: TaskNode, model: BoardModel): Menu {
 		const menu = new Menu();
+		const derived = isDerived(node);
 		for (const col of model.columns) {
 			menu.addItem((i) =>
 				i
-					.setTitle(`Mark as ${col.name}`)
+					// A derived node cannot simply "be" a state — saying so means overriding what
+					// its children add up to. The label says which one you're doing, because a
+					// gesture that quietly writes `[tt-override:: done]` is the failure this
+					// whole product exists to prevent.
+					.setTitle(derived ? `Override to ${col.name}` : `Mark as ${col.name}`)
 					// One glyph per role: five identical check marks read as one blur.
 					.setIcon(roleIcon(col.role))
 					.onClick(() => {
-						if (node.isLeaf) void writeStatus(this.plugin, model.file, node.line, col.status);
+						if (!derived) void writeStatus(this.plugin, model.file, node.line, col.status);
 						else if (col.role === node.derivedRole) void clearOverride(this.plugin, model.file, node.line);
 						else void writeOverride(this.plugin, model.file, node.line, col.role, model.columns);
 					}),

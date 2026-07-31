@@ -29,7 +29,7 @@ function meta(node) {
 			`<div class="tt-progress-bar"><div class="tt-progress-fill" style="width:${node.pct ?? 50}%"></div></div></span>`
 		: "";
 	const notes = node.notes
-		? `<span class="tt-note-progress is-open"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h4M3 12h4M3 18h4M11 6h10M11 12h10M11 18h10"/></svg><span class="tt-note-progress-text">${node.notes}</span></span>`
+		? `<span class="tt-note-progress is-open"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h4M3 12h4M3 18h4M11 6h10M11 12h10M11 18h10"/></svg><span class="tt-note-progress-text">${node.notes} in notes</span></span>`
 		: "";
 	return `<div class="tt-node-meta">${chip}${prog}${notes}` +
 		`<span class="tt-row-btn tt-note-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 3h10l6 6v12H4z"/></svg></span>` +
@@ -74,7 +74,7 @@ export const TREE = [
 		{ id: "t-a1", text: "Stakeholder interviews", role: "done", roleName: "Done" },
 		{ id: "t-a2", text: "Analytics audit", role: "done", roleName: "Done" },
 	] },
-	{ id: "t-b", text: "Design", role: "doing", roleName: "Doing", progress: "1/4", pct: 25, notes: "3/11", children: [
+	{ id: "t-b", text: "Design", role: "doing", roleName: "Doing", progress: "1/4", pct: 25, notes: "8", children: [
 		{ id: "t-b1", text: "Wireframes", role: "done", roleName: "Done" },
 		{ id: "t-b2", text: "Visual language", role: "doing", roleName: "Doing", progress: "0/3", pct: 0, children: [
 			{ id: "t-b2a", text: "Typography scale", role: "todo", roleName: "To Do" },
@@ -85,5 +85,5 @@ export const TREE = [
 			{ id: "t-b3a", text: "Buttons", role: "todo", roleName: "To Do" },
 		] },
 	] },
-	{ id: "t-c", text: "Ship", role: "todo", roleName: "To Do", notes: "0/4" },
+	{ id: "t-c", text: "Ship", role: "todo", roleName: "To Do", notes: "4" },
 ];
