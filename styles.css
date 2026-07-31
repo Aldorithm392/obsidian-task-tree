@@ -118,10 +118,34 @@
 	font-weight: 600;
 	border-bottom: 1px solid var(--background-modifier-border);
 	/* Snippet hook: set --tt-col-color on .tt-column[data-role="…"] (or [data-col-id])
-	   to tint one lane. This replaced the per-column color picker in 1.8.0. */
+	   to tint one lane. This replaced the per-column color picker in 1.8.0 — a snippet
+	   loads after this file, so an equal-specificity rule there wins. */
 	border-top: 3px solid var(--tt-col-color, var(--interactive-accent));
 	border-top-left-radius: var(--radius-m);
 	border-top-right-radius: var(--radius-m);
+}
+/*
+ * A lane's colour comes from its ROLE, on the same palette the chips use.
+ *
+ * Removing the per-column picker in 1.8.0 was argued on "colour here carries meaning" — and
+ * that was only true of chips and rows. Column heads had drawn one flat accent since v0.2,
+ * so Blocked and Done were indistinguishable on every board whose owner never opened the
+ * picker, which was every board. The `data-role` hook added for snippets makes it four rules
+ * and no JavaScript, and it is what earns the claim the README now makes.
+ */
+.tt-column[data-role="doing"] {
+	--tt-col-color: var(--color-yellow, #c99a2e);
+}
+.tt-column[data-role="done"] {
+	--tt-col-color: var(--color-green, #3aa675);
+}
+.tt-column[data-role="blocked"] {
+	--tt-col-color: var(--color-red, #c0392b);
+}
+/* todo and cancelled share the quiet edge: one hasn't started, the other never will. */
+.tt-column[data-role="todo"],
+.tt-column[data-role="cancelled"] {
+	--tt-col-color: var(--background-modifier-border);
 }
 .tt-column-count {
 	color: var(--text-muted);

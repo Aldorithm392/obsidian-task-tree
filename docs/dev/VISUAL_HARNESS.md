@@ -20,6 +20,14 @@ content height of each, and writes a PNG per variant. The `diagram-folded` job r
 `openDepth: 2` — what a board actually opens as — while plain `diagram` stays fully expanded,
 because the packing and geometry questions are about the widest case.
 
+`board.mjs` adds the two surfaces the tree fixtures can't reach: the **Kanban** (`kanban`,
+`kanban-dark`, `kanban-snippet`) and the **dashboard panel** (`panel`, `panel-dark`,
+`leverage`). Its fixture is `examples/projects/website-redesign.md` with its real derived
+state — the counts, breadcrumbs and leverage badges are the ones `collectNextUp` actually
+returns for that file, cross-checked against the model rather than typed in by hand. The
+`kanban-snippet` job applies the README's CSS snippet *after* the stylesheet, the way a
+vault snippet loads, so "the cut kept the capability" is a render and not a promise.
+
 **The fixtures must not flatter the plugin.** Every parent in them carries a `K/D`, because
 `createProgressBadge` emits one whenever `progress.total > 0` — i.e. always, for a node with task
 children. Two fixture parents were missing theirs; harmless while everything rendered expanded, and
@@ -32,9 +40,12 @@ An instrument that disagrees with the thing it measures is worse than no instrum
 The harness renders **static DOM**, not the plugin. It proves things about CSS: spacing,
 hierarchy, wrapping, theme behaviour, and the geometry the overlay code computes. It
 proves nothing about event handlers, the metadata cache, or write-back — those still need
-a real vault and `docs/dev/QA_CHECKLIST.md`. Keep the fixtures in `diagram.mjs` / `list.mjs`
-in step with `buildRowContent()` when the row markup changes, or you'll be measuring a
-layout the plugin no longer emits.
+a real vault and `docs/dev/QA_CHECKLIST.md`. Keep the fixtures in `diagram.mjs` / `list.mjs` /
+`board.mjs` in step with `buildRowContent()` and `renderCard()` when the row markup changes, or
+you'll be measuring a layout the plugin no longer emits. This is not hypothetical: `board.mjs`
+shipped its first render with the dependency badge as bare text in a `.tt-dep-badge`, missing
+both `tt-dep-held` and the `.tt-dep-text` span, so it drew large and grey where the plugin draws
+small and red. A fixture that lies is worse than no fixture, because you believe it.
 
 ## Two things it already caught
 

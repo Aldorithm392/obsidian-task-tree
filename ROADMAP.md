@@ -260,6 +260,22 @@ commit as the code.
   dropped, and silently editing a user's frontmatter to tidy up after itself is the behaviour
   `docs/00_VISION.md` forbids.
 
+## Shipped (v1.8.1 — making 1.8.0's claim true)
+
+- **Lanes are coloured by role.** 1.8.0 removed the per-column picker arguing that "colour here
+  carries meaning" — which was true of chips and rows and **false of Kanban column heads**, which
+  had drawn one flat accent since v0.2. Blocked and Done were indistinguishable on every board whose
+  owner never opened the picker, i.e. every board. The `data-role` hook added for snippets makes it
+  four CSS rules and no JavaScript. Found by rendering the board, not by reading the diff.
+- **The harness reaches the Kanban and the dashboard panel** (`tools/visual/board.mjs`). Both
+  surfaces carry every change from 1.7.0 and 1.8.0 and neither was visible to the tree fixtures, so
+  the previous two releases shipped their most-changed pixels unseen.
+- **The snippet override is a render, not a promise:** `kanban-snippet` applies the README's CSS
+  after the stylesheet, the way a vault snippet loads.
+- Caught by the new fixture, in the fixture itself: the dependency badge was mocked as bare text and
+  drew large and grey where the plugin draws small and red. An instrument that disagrees with the
+  thing it measures is worse than no instrument.
+
 ## Next (v1.9+ — candidates, not commitments)
 
 - **Diagram packing, properly.** Measured (see `docs/dev/VISUAL_HARNESS.md`): canvas height is

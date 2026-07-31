@@ -247,13 +247,17 @@ The right-click menu offers every **role**, not every column. Which lanes you dr
 choice; it doesn't decide which states a task is allowed to be in.
 
 A column is four things — name, character, role, and where it sits. **Color isn't one of them.**
-Colour here carries meaning (blocked is loud, cancelled recedes, doing is in flight), and a
-per-column tint could only overwrite it. If you want your own palette, Obsidian already has the
-stronger tool — a CSS snippet, which can do everything a colour picker could and much more:
+A lane is tinted by its **role**, on the same palette as the chips: Doing is amber, Blocked red,
+Done green, To Do and Cancelled a quiet grey. That way a board reads the same in your vault as in
+a screenshot on the forum, and a colour means one thing everywhere it appears.
+
+If you want your own palette, Obsidian already has the stronger tool. A CSS snippet does everything
+a per-column colour picker could and much more — and it loads after the plugin's stylesheet, so
+these override the defaults above:
 
 ```css
 /* Vault → Appearance → CSS snippets */
-.tt-column[data-role="doing"] { --tt-col-color: #d17a22; }
+.tt-column[data-role="doing"] { --tt-col-color: #00b894; }
 .tt-column[data-col-id="my-lane"] { --tt-col-color: #6c5ce7; }
 .tt-chip[data-role="blocked"] { --tt-chip-color: #b02020; }
 ```

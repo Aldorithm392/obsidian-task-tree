@@ -181,8 +181,10 @@ With `examples/projects/website-redesign.md` open as a dashboard:
 - [ ] A board whose frontmatter carries `tt_columns` with a hand-written `color:` key still opens,
   the column reads normally, and **the key is still in the file afterwards** — ignored, never
   stripped.
+- [ ] Lanes are tinted by role out of the box — Doing amber, Blocked red, Done green, To Do and
+  Cancelled grey — in light **and** dark. No two lanes share an edge colour except To Do/Cancelled.
 - [ ] The README snippet works verbatim as a vault CSS snippet: `.tt-column[data-role="doing"]`
-  tints that lane's header rule, and `.tt-chip[data-role="blocked"]` retints the chip.
+  overrides that lane's default tint, and `.tt-chip[data-role="blocked"]` retints the chip.
 
 ## Regression guard
 
