@@ -68,6 +68,8 @@ src/
     parser.ts          buildTree() from listItems + raw lines; flatten(); findById()
     rollup.ts          computeRollup()
     insights.ts        computeSummary / collectBlockers / collectNextUp / markBlockedPaths (dashboard)
+                       + unblockCount / milestonesClosedBy — the DERIVED leverage that orders
+                       "Next up" instead of a priority field (in-flight tier always wins)
                        + resolveEdges / collectDependencyBlocked (tt-blocked-by graph, cycles)
     folding.ts         isFolded() / visibleNodes() — the tri-state fold rule (explicit collapse >
                        explicit expand > depth default), so the off-by-one is a test not a surprise

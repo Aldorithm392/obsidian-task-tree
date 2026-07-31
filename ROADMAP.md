@@ -213,7 +213,28 @@ commit as the code.
   1.3–1.5 the invariant is structurally true, so it is finally the thing we claim: *never writes a
   fact your Markdown doesn't already carry.*
 
-## Next (v1.7+ — candidates, not commitments)
+## Shipped (v1.7 — the panel says why)
+
+- **"Next up" is ordered by derived leverage, and there is still no priority field.** The whole
+  Eisenhower/priority category on Obsidian is 3,762 downloads across 12 plugins — mostly maintained,
+  so that is not abandonment, it is non-adoption; and every one of them needs an "unjudged" drawer,
+  because asking the user to rate work is handing them the complexity (Tesler). The board already
+  knew the answer: `resolveEdges` knows what waits on what, `computeRollup` knows how many siblings
+  are left. The panel simply wasn't reading it. Zero new syntax, nothing to keep up to date.
+- **`unblocks N` counts strictly.** A waiter is counted only when the task is the **last unreleased
+  thing** it depends on. Saying "3 are waiting on you" when two would stay stuck behind something
+  else makes the badge a promise the board can't keep, and an overstated number is worse than none.
+- **`completes "X"` cascades, and stops at an override.** Clearing the last open leaf under a
+  milestone closes it — and closes its parent too when that milestone was the last thing open there.
+  It stops at any ancestor carrying `tt-override`, because an overridden node is no longer decided
+  by its children, so finishing the leaf would not close it.
+- **In-flight work still sorts first, whatever the leverage.** You already paid the cost of loading
+  that context, and a "next up" list that nudges you to drop work in progress to open a new front
+  has exactly one failure mode and that is it. Leverage sorts *within* each tier.
+- **One line of rule, not eight badges.** The ordering is stated once above the list; a row with no
+  leverage gets no badge, because the absence is information too.
+
+## Next (v1.8+ — candidates, not commitments)
 
 - **Diagram packing, properly.** Measured (see `docs/dev/VISUAL_HARNESS.md`): canvas height is
   leaf-bound and completely insensitive to `align-items`, so no CSS tweak will do it. A genuinely

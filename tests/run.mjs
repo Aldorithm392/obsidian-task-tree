@@ -42,6 +42,7 @@ import {
 	collectNoteWork,
 	markBlockedPaths,
 	resolveEdges,
+	unblockCount,
 } from "../src/model/insights.ts";
 import { pendingNoteWork, walkNoteProgress } from "../src/model/noteprogress.ts";
 import { displayForm, foldDiacritics } from "../src/model/fuzzy.ts";
@@ -1160,6 +1161,117 @@ test("leaves under an explicitly overridden-done ancestor are not recommended", 
 	assert.deepEqual(
 		collectNextUp(roots).map((i) => i.node.text),
 		["Live task"],
+	);
+});
+
+// ---- derived leverage: why one actionable leaf beats another -----------------
+console.log("leverage");
+const leverageOf = (items, text) => items.find((i) => i.node.text === text).leverage;
+
+test("unblocks counts a waiter only when this is its LAST unreleased dependency", () => {
+	const roots = parse([
+		"- [ ] Staging box ^t-staging",
+		"- [ ] Copy ^t-copy",
+		"- [ ] QA pass [tt-blocked-by:: t-staging] ^t-qa",
+		"- [ ] Announce [tt-blocked-by:: t-staging, t-copy] ^t-ann",
+	]);
+	const nu = collectNextUp(roots, resolveEdges(roots));
+	// Staging frees QA pass outright; Announce would still be held by Copy, so it doesn't count.
+	assert.equal(leverageOf(nu, "Staging box").unblocks, 1);
+	assert.equal(leverageOf(nu, "Copy").unblocks, 0, "Announce stays stuck behind Staging box");
+});
+test("a released dependency stops holding its waiter, so the last one gets full credit", () => {
+	const roots = parse([
+		"- [ ] Staging box ^t-staging",
+		"- [x] Copy ^t-copy",
+		"- [ ] Announce [tt-blocked-by:: t-staging, t-copy] ^t-ann",
+	]);
+	const nu = collectNextUp(roots, resolveEdges(roots));
+	assert.equal(leverageOf(nu, "Staging box").unblocks, 1);
+});
+test("a waiter that is already finished isn't counted as freed", () => {
+	const roots = parse(["- [ ] Keystone ^t-key", "- [x] Shipped anyway [tt-blocked-by:: t-key] ^t-s"]);
+	assert.equal(unblockCount(roots[0], resolveEdges(roots)), 0);
+});
+
+test("finishing the last open leaf completes its milestone, and cascades upward", () => {
+	const roots = parse([
+		"- [ ] Design",
+		"\t- [x] Moodboard",
+		"\t- [/] Wireframes",
+		"\t\t- [x] Home page",
+		"\t\t- [ ] Pricing page",
+	]);
+	const nu = collectNextUp(roots);
+	assert.equal(nu[0].node.text, "Pricing page");
+	assert.deepEqual(
+		nu[0].leverage.completes.map((n) => n.text),
+		["Wireframes", "Design"],
+		"nearest milestone first",
+	);
+});
+test("the cascade stops at an ancestor whose override, not its children, decides it", () => {
+	const roots = parse([
+		"- [/] Design [tt-override:: doing]",
+		"\t- [x] Moodboard",
+		"\t- [/] Wireframes",
+		"\t\t- [x] Home page",
+		"\t\t- [ ] Pricing page",
+	]);
+	assert.deepEqual(
+		collectNextUp(roots)[0].leverage.completes.map((n) => n.text),
+		["Wireframes"],
+		"an overridden ancestor would not roll up to done, so it must not be promised",
+	);
+});
+test("a blocked sibling keeps the milestone out of reach, a cancelled one does not", () => {
+	const roots = parse(["- [ ] Content", "\t- [!] Copywriting", "\t- [ ] Photography", "\t- [-] Customer video"]);
+	assert.deepEqual(leverageOf(collectNextUp(roots), "Photography").completes, []);
+	// Drop the blocker and the same leaf becomes the one thing standing between here and done.
+	const freed = parse(["- [ ] Content", "\t- [x] Copywriting", "\t- [ ] Photography", "\t- [-] Customer video"]);
+	assert.deepEqual(
+		leverageOf(collectNextUp(freed), "Photography").completes.map((n) => n.text),
+		["Content"],
+	);
+});
+
+test("work in flight stays ahead of a not-started task carrying more leverage", () => {
+	const roots = parse([
+		"- [/] Half-done thing",
+		"- [ ] Keystone ^t-key",
+		"- [ ] Waiter A [tt-blocked-by:: t-key] ^t-wa",
+		"- [ ] Waiter B [tt-blocked-by:: t-key] ^t-wb",
+	]);
+	const nu = collectNextUp(roots, resolveEdges(roots));
+	assert.equal(nu[0].node.text, "Half-done thing", "doing outranks any amount of leverage");
+	assert.equal(nu[1].node.text, "Keystone");
+	assert.equal(nu[1].leverage.unblocks, 2);
+});
+test("leverage reorders within a group, and equal leverage keeps document order", () => {
+	const roots = parse([
+		"- [ ] Plain one",
+		"- [ ] Plain two",
+		"- [ ] Keystone ^t-key",
+		"- [ ] Waiter [tt-blocked-by:: t-key] ^t-w",
+	]);
+	assert.deepEqual(
+		collectNextUp(roots, resolveEdges(roots)).map((i) => i.node.text),
+		["Keystone", "Plain one", "Plain two"],
+	);
+});
+test("without the dependency graph the milestone signal still holds and unblocks reads 0", () => {
+	const roots = parse([
+		"- [ ] Design",
+		"\t- [x] Moodboard",
+		"\t- [ ] Wireframes ^t-w",
+		"- [ ] Waiter [tt-blocked-by:: t-w] ^t-x",
+	]);
+	resolveEdges(roots);
+	const lev = leverageOf(collectNextUp(roots), "Wireframes");
+	assert.equal(lev.unblocks, 0);
+	assert.deepEqual(
+		lev.completes.map((n) => n.text),
+		["Design"],
 	);
 });
 

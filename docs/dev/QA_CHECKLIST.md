@@ -155,6 +155,22 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
   overridden to done/cancelled that is hiding blocked work underneath.
 - [ ] The dependency badge reads "waiting on N"; the menu says "Waiting on…".
 
+## Next-up leverage (1.7.0)
+
+With `examples/projects/website-redesign.md` open as a dashboard:
+
+- [ ] "Next up" carries one italic rule line: *In flight first, then whatever frees the most work.*
+- [ ] **Pricing page** reads `completes 2 milestones` (Wireframes, then Design) and sorts above
+  **Photography**, which carries no badge at all — its sibling *Copywriting* is still blocked.
+- [ ] Mark *Copywriting* done: **Photography** picks up `completes "Content"` on the next render.
+- [ ] Add `[tt-override:: doing]` to *Design*: **Pricing page** drops to `completes "Wireframes"`
+  — the cascade must stop at an ancestor whose override, not its children, decides it.
+- [ ] Set *Staging box* to a leaf outside the overridden Infrastructure branch (or clear the
+  override): it should read `unblocks 1` — *QA pass* waits only on it, while *Announcement post*
+  would still be held by *Copywriting*, so it must **not** count as 2.
+- [ ] Set any task to `[/]`: it jumps above every not-started task, however much leverage they
+  carry.
+
 ## Regression guard
 
 - [ ] With `examples/projects/website-redesign.md`: perform one move + one rename + one id-assign,

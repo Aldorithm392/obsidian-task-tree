@@ -144,6 +144,23 @@ then a deep subtask blocks it.** Instead of getting ambushed, you get:
 
 Open it with **"Open current file as dashboard"** (or the ribbon icon).
 
+### "Next up" is ordered, and there is no priority field
+
+Task Tree ships **no** priority or urgency field, and won't. Rating your own work is a chore people
+skip — every implementation of it ends up with an "unjudged" pile — and a hand-typed `!!high` is
+stale the moment the project moves. So the panel earns its order from what your board already says:
+
+- **`unblocks 3`** — three tasks start the moment you finish this one. Counted strictly: a waiter
+  only counts if this is the *last* thing it's waiting on, so the number never promises work it
+  can't free.
+- **`completes "Wireframes"`** — this is the only open leaf left under that milestone, so finishing
+  it closes the milestone. It cascades: clear the last leaf under *Wireframes* when *Wireframes* is
+  the last thing open under *Design*, and the row reads **`completes 2 milestones`**.
+
+Both come from the dependency graph and the roll-up you already have, so they can't drift. **Work
+already in progress stays at the top regardless** — a list that talks you into dropping what you
+started to open a new front has failed at the one job it has.
+
 ### A board opens shallow, and unfolds where you look
 
 Roll-up computes, for every parent, the one number that answers *how is that going*. A view that then

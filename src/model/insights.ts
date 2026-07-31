@@ -28,6 +28,29 @@ export interface Insight {
 	path: TaskNode[];
 }
 
+/**
+ * Why one actionable leaf matters more than another — derived, never typed by a human.
+ *
+ * The plugin ships no priority field on purpose: every Obsidian implementation of one needs
+ * an "unjudged" drawer, because rating work is a chore users skip. Both numbers here are
+ * already computed for other reasons — the dependency graph and the roll-up — so they cost
+ * nothing to keep true and can't go stale the way a hand-typed `!!high` does.
+ */
+export interface Leverage {
+	/** Tasks that would become actionable the moment this one is finished. */
+	unblocks: number;
+	/** Ancestors that would roll up to done in cascade, nearest first. */
+	completes: TaskNode[];
+}
+
+export interface NextUp extends Insight {
+	leverage: Leverage;
+}
+
+function releases(r: Role): boolean {
+	return r === "done" || r === "cancelled";
+}
+
 function walkWithPath(roots: TaskNode[], visit: (node: TaskNode, path: TaskNode[]) => void): void {
 	const rec = (n: TaskNode, path: TaskNode[]): void => {
 		visit(n, path);
@@ -61,18 +84,81 @@ export function collectBlockers(roots: TaskNode[]): Insight[] {
  * children win over a parent's own character, so a parent typed `[-]` with one unfinished
  * child legitimately reads `todo`. The override is the only place a human states intent
  * about a branch, which is exactly why the format puts it in visible ink.
+ *
+ * Ordering is two-tier and the outer tier is the opinionated one: **in-progress work stays
+ * ahead of anything not started**, however much leverage the newcomer carries. You already
+ * paid the cost of loading that context, and a list that nudges you to drop work in flight
+ * to open a new front is the one failure a "next up" panel must not have. Leverage sorts
+ * *within* each tier, so the high-value pickup is still near the top of its own group.
  */
-export function collectNextUp(roots: TaskNode[]): Insight[] {
-	const doing: Insight[] = [];
-	const todo: Insight[] = [];
+export function collectNextUp(roots: TaskNode[], graph?: EdgeGraph): NextUp[] {
+	const doing: NextUp[] = [];
+	const todo: NextUp[] = [];
 	walkWithPath(roots, (n, path) => {
 		if (!n.isTask || !n.isLeaf) return;
 		if (n.isDependencyBlocked) return;
 		if (path.some((a) => a.override === "done" || a.override === "cancelled")) return;
-		if (n.effectiveRole === "doing") doing.push({ node: n, path });
-		else if (n.effectiveRole === "todo") todo.push({ node: n, path });
+		if (n.effectiveRole !== "doing" && n.effectiveRole !== "todo") return;
+		const leverage: Leverage = {
+			unblocks: graph ? unblockCount(n, graph) : 0,
+			completes: milestonesClosedBy(path),
+		};
+		(n.effectiveRole === "doing" ? doing : todo).push({ node: n, path, leverage });
 	});
-	return [...doing, ...todo];
+	return [...byLeverage(doing), ...byLeverage(todo)];
+}
+
+/** Array.sort is stable, so equal leverage keeps document order — no tiebreak needed. */
+function byLeverage(items: NextUp[]): NextUp[] {
+	return items.sort(
+		(a, b) =>
+			b.leverage.unblocks - a.leverage.unblocks ||
+			b.leverage.completes.length - a.leverage.completes.length,
+	);
+}
+
+/**
+ * How many waiting tasks finishing `node` would actually free.
+ *
+ * Deliberately strict: an edge counts only when `node` is the **last unreleased thing** its
+ * waiter depends on. Reporting "3 are waiting on you" when two of them would stay stuck
+ * behind something else turns the badge into a promise the board can't keep, and a number
+ * that overstates is worse than no number. Waiters already done or cancelled don't count
+ * either — freeing finished work frees nothing.
+ */
+export function unblockCount(node: TaskNode, graph: EdgeGraph): number {
+	const freed = new Set<string>();
+	for (const e of graph.edges) {
+		if (e.to !== node || releases(e.from.effectiveRole)) continue;
+		const heldElsewhere = graph.edges.some(
+			(o) => o.from === e.from && o.to !== node && !releases(o.to.effectiveRole),
+		);
+		if (!heldElsewhere) freed.add(e.from.id);
+	}
+	return freed.size;
+}
+
+/**
+ * The ancestors that would roll up to done in cascade if this leaf were finished, nearest
+ * first. `path` is the leaf's ancestor chain as `walkWithPath` supplies it.
+ *
+ * `progress` already excludes cancelled children from its denominator, so "exactly one
+ * unfinished child left" is just `total - done === 1` — and that one child is necessarily
+ * the branch we walked up from.
+ *
+ * Two stops, both principled. An ancestor carrying an **override** is no longer decided by
+ * its children, so finishing this leaf would not close it. A **non-task** bullet isn't
+ * counted in its own parent's progress, so the cascade genuinely dies there.
+ */
+export function milestonesClosedBy(path: TaskNode[]): TaskNode[] {
+	const out: TaskNode[] = [];
+	for (let i = path.length - 1; i >= 0; i--) {
+		const a = path[i]!;
+		if (!a.isTask || a.override) break;
+		if (a.progress.total - a.progress.done !== 1) break;
+		out.push(a);
+	}
+	return out;
 }
 
 /** Annotate each node with whether a blocked task sits anywhere below it. */
@@ -166,7 +252,6 @@ export function resolveEdges(roots: TaskNode[]): EdgeGraph {
 		}
 	}
 
-	const releases = (r: Role): boolean => r === "done" || r === "cancelled";
 	for (const n of nodes) n.isDependencyBlocked = false;
 	for (const e of edges) {
 		if (!releases(e.to.effectiveRole)) e.from.isDependencyBlocked = true;

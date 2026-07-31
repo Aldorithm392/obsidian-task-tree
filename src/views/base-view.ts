@@ -30,6 +30,7 @@ import {
 	collectNoteWork,
 	computeSummary,
 	type Insight,
+	type Leverage,
 } from "../model/insights.ts";
 import { flatten } from "../model/parser.ts";
 import { placementColumn, taskDisplayText } from "./card.ts";
@@ -443,28 +444,37 @@ export abstract class TaskTreeView extends ItemView {
 		// The depth the board can't show: work parked inside the notes hanging off it.
 		const inNotes = collectNoteWork(model.roots);
 		if (inNotes.length > 0) {
-			this.renderInsightList(panel, "Open inside linked notes", inNotes.slice(0, 8), model, "", (it) => {
-				const p = it.node.noteProgress;
-				return p ? `${p.total - p.done} left${p.truncated ? "+" : ""}` : "";
+			this.renderInsightList(panel, "Open inside linked notes", inNotes.slice(0, 8), model, "", {
+				detail: (it) => {
+					const p = it.node.noteProgress;
+					return p ? `${p.total - p.done} left${p.truncated ? "+" : ""}` : "";
+				},
 			});
 		}
-		this.renderInsightList(panel, "Next up", collectNextUp(model.roots).slice(0, 8), model, "No open tasks.");
+		// Ordered by derived leverage, not by a priority field nobody keeps up to date.
+		// One line of rule beats the same badge explained eight times.
+		this.renderInsightList(panel, "Next up", collectNextUp(model.roots, model.graph).slice(0, 8), model, "No open tasks.", {
+			note: "In flight first, then whatever frees the most work.",
+			detail: (it) => leverageLabel(it.leverage),
+		});
 	}
 
-	private renderInsightList(
+	private renderInsightList<T extends Insight>(
 		panel: HTMLElement,
 		title: string,
-		items: Insight[],
+		items: T[],
 		model: BoardModel,
 		empty: string,
-		detail?: (it: Insight) => string,
+		opts: { note?: string; detail?: (it: T) => string } = {},
 	): void {
+		const { note, detail } = opts;
 		const sec = panel.createDiv({ cls: "tt-panel-sec" });
 		sec.createDiv({ cls: "tt-panel-title", text: items.length ? `${title} (${items.length})` : title });
 		if (items.length === 0) {
 			sec.createDiv({ cls: "tt-panel-empty", text: empty });
 			return;
 		}
+		if (note) sec.createDiv({ cls: "tt-panel-note", text: note });
 		for (const it of items) {
 			const rowEl = sec.createDiv({ cls: "tt-panel-item" });
 			rowEl.setAttribute("data-role", it.node.effectiveRole);
@@ -548,4 +558,18 @@ export abstract class TaskTreeView extends ItemView {
 function setIconInto(container: HTMLElement, icon: string): void {
 	const el = container.createDiv({ cls: "tt-placeholder-icon" });
 	setIcon(el, icon);
+}
+
+/**
+ * Word the derived leverage. Numbers stay in the model, phrasing stays here — the same
+ * split as `collectNoteWork` / "N left". A row with no leverage gets no badge at all:
+ * the absence is information too, and eight identical chips would be noise.
+ */
+function leverageLabel(l: Leverage): string {
+	const bits: string[] = [];
+	if (l.unblocks > 0) bits.push(`unblocks ${l.unblocks}`);
+	const first = l.completes[0];
+	if (l.completes.length === 1 && first) bits.push(`completes “${taskDisplayText(first) || "…"}”`);
+	else if (l.completes.length > 1) bits.push(`completes ${l.completes.length} milestones`);
+	return bits.join(" · ");
 }

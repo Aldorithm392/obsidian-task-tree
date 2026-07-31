@@ -749,6 +749,13 @@ h2.tt-dash-title {
 	color: var(--text-faint);
 	font-variant-numeric: tabular-nums;
 }
+/* The ordering rule, stated once above the list instead of per row. */
+.tt-panel-note {
+	margin: -2px 0 6px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	font-style: italic;
+}
 
 /* ---- diagram layout ---- */
 .tt-diagram {
