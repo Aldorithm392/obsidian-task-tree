@@ -27,6 +27,17 @@ export const FROZEN = {
 	 * regardless. This only ever applied to a board with no nesting yet.
 	 */
 	indentUnit: "\t",
+	/**
+	 * How many levels of a board are open the first time you see it.
+	 *
+	 * Roll-up's entire job is to let you NOT look: a collapsed parent reading `2/5` is the
+	 * answer to "how is that going". Opening every branch spends the signal the plugin just
+	 * finished computing, and turns a 40-task project into 40 rows of noise.
+	 *
+	 * Not a setting: "Expand all" is one button and it is remembered per board, so the
+	 * preference is a gesture rather than a permanent branch in the code.
+	 */
+	openDepth: 2,
 } as const;
 
 export interface TaskTreeSettings {
@@ -108,7 +119,6 @@ export class TaskTreeSettingTab extends PluginSettingTab {
 			.addDropdown((d) => {
 				d.addOption("list", "List (vertical)");
 				d.addOption("diagram", "Diagram (horizontal)");
-				d.addOption("columns", "Columns (drill-down)");
 				d.setValue(this.plugin.settings.treeLayout).onChange(async (v) => {
 					this.plugin.settings.treeLayout = v as TreeLayout;
 					await this.plugin.saveSettings();

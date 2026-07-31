@@ -27,7 +27,7 @@ migration, a `tt_version` key can be introduced then, opt-in.
 - **Attack the "hidden deep blocker" pain:** a Blockers & next-up panel, ⚠ blocked-path highlighting on
   ancestors, and summary stats (`src/model/insights.ts`, unit-tested).
 - **Three tree layouts** — list, diagram (horizontal tree + CSS connectors), columns (Finder-style
-  drill-down); remembered per board via view state.
+  drill-down); remembered per board via view state. *(Columns removed in v1.5 — see below.)*
 - **Full-focus view** — open any task + its subtree distraction-free in a main-area pane.
 
 ## Shipped (v0.3 — human-first)
@@ -165,7 +165,27 @@ commit as the code.
   where the chip isn't already Blocked, i.e. where an override is hiding blocked work.
 - **One word, one meaning.** Dependencies say "waiting on"; `blocked` goes back to being a role.
 
-## Next (v1.5+ — candidates, not commitments)
+## Shipped (v1.5 — one scope, one hiding gesture)
+
+- **The board opens shallow.** Roll-up computes, for every parent, the one number that answers *how
+  is that going* — and the view then opened every branch and spent that signal before the user saw
+  it. Boards now open two levels deep (`FROZEN.openDepth`). Measured on the harness: the list
+  fixture went 451px → 325px of content and the diagram 707px → 519px, which is the difference
+  between a board that fits a pane and one that doesn't. A folded parent keeps its chip *and* its
+  `K/D`, which is the whole bet: that fraction is permission not to look.
+- **Folding became tri-state, necessarily.** Once a depth default exists, "not in `collapsed`" can no
+  longer mean "open" — a hand-opened branch would silently re-fold the next time the default was
+  applied. An explicit choice outranks depth forever, in *either* direction. The rule is pure
+  (`src/model/folding.ts`) so the off-by-one is a test, not a screenshot surprise.
+- **Four hiding mechanisms became one.** Deleted: the full-focus tab (five indistinguishable tabs —
+  `getDisplayText` returned the same string for each), the Miller **Columns** layout, `columnPath`,
+  `wireColumnsKeyboard`, the three-way layout switch, and one of the two near-identical focus items.
+  The evidence Columns was redundant was already in the code: `setFocus` had to *clear the drill
+  path* so two hiding mechanisms wouldn't contradict each other. Both remaining layouts read one
+  fold state, and a test fails on any raw `collapsed.has(id)` — the drift that had the diagram
+  drawing an open branch under a chevron pointing right.
+
+## Next (v1.6+ — candidates, not commitments)
 
 - **Diagram packing, properly.** Measured (see `docs/dev/VISUAL_HARNESS.md`): canvas height is
   leaf-bound and completely insensitive to `align-items`, so no CSS tweak will do it. A genuinely

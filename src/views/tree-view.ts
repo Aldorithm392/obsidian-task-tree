@@ -18,6 +18,7 @@ import {
 import { flatten } from "../model/parser.ts";
 import { computeSummary } from "../model/insights.ts";
 import { isDerived } from "../model/rollup.ts";
+import { isFolded } from "../model/folding.ts";
 import type { TaskNode, TreeLayout } from "../model/types.ts";
 import type TaskTreePlugin from "../main.ts";
 import {
@@ -28,13 +29,13 @@ import {
 	createProgressBadge,
 	createStatusChip,
 	dependencyInfo,
-	placementColumn,
 	renderTaskText,
 	roleIcon,
 	roleLabel,
 	taskDisplayText,
 } from "./card.ts";
 import { canonicalStatusForRole } from "../columns.ts";
+import { FROZEN } from "../settings.ts";
 import { confirmed, promptText } from "./modals.ts";
 
 interface RowOptions {
@@ -87,13 +88,18 @@ function localRect(el: HTMLElement, canvas: HTMLElement): LocalRect | null {
 }
 
 export class TreeView extends TaskTreeView {
+	/**
+	 * Folding is tri-state, and it has to be. A board opens `FROZEN.openDepth` levels deep,
+	 * so "not in the collapsed set" can no longer mean "open" — otherwise unfolding a branch
+	 * would be forgotten the moment the depth default reasserted itself on the next render.
+	 * Explicit beats default, in both directions; everything else follows depth.
+	 */
 	private collapsed = new Set<string>();
+	private expanded = new Set<string>();
 	private focusId: string | null = null;
-	private fullFocus = false;
 	private showDeps = true;
 	private layout: TreeLayout;
 	private inverted = false;
-	private columnPath: string[] = [];
 	private byId = new Map<string, TaskNode>();
 	/** Row to re-focus after a keyboard action re-rendered the tree (fold, toggle). */
 	private pendingFocusId: string | null = null;
@@ -111,7 +117,26 @@ export class TreeView extends TaskTreeView {
 		return VIEW_TYPE_TREE;
 	}
 	getDisplayText(): string {
-		return this.fullFocus ? "Task Tree — Focus" : "Task Tree — Tree";
+		return "Task Tree — Tree";
+	}
+
+	/** Is this node's branch hidden? The rule itself lives in the pure layer. */
+	private isCollapsed(node: TaskNode): boolean {
+		return isFolded(node, {
+			openDepth: FROZEN.openDepth,
+			collapsed: this.collapsed,
+			expanded: this.expanded,
+			// Depth counts from whatever the view is rooted at. Focusing a branch and then
+			// hiding it because it sits deep in the board would answer "show me this" with
+			// one row.
+			baseDepth: this.focusDepth(),
+		});
+	}
+
+	/** Depth of the current view root: 0 for a whole board, the focused node's depth otherwise. */
+	private focusDepth(): number {
+		if (!this.focusId) return 0;
+		return this.byId.get(this.focusId)?.depth ?? 0;
 	}
 	getIcon(): string {
 		return "list-tree";
@@ -126,11 +151,12 @@ export class TreeView extends TaskTreeView {
 			layout: this.layout,
 			inverted: this.inverted,
 			focusId: this.focusId,
-			fullFocus: this.fullFocus,
-			columnPath: this.columnPath,
 			showDeps: this.showDeps,
 			// Only stable ^ids survive a reload; synthetic L<line> keys shift with any edit.
+			// BOTH sets persist: with a depth default, "explicitly opened" is as much a
+			// decision as "explicitly closed" and is lost just as easily.
 			collapsed: [...this.collapsed].filter((id) => !/^L\d+$/.test(id)),
+			expanded: [...this.expanded].filter((id) => !/^L\d+$/.test(id)),
 		};
 	}
 
@@ -140,32 +166,29 @@ export class TreeView extends TaskTreeView {
 				layout: TreeLayout;
 				inverted: boolean;
 				focusId: string | null;
-				fullFocus: boolean;
-				columnPath: string[];
 				collapsed: string[];
+				expanded: string[];
 				showDeps: boolean;
 			}>;
-			if (s.layout === "list" || s.layout === "diagram" || s.layout === "columns") this.layout = s.layout;
+			if (s.layout === "list" || s.layout === "diagram") this.layout = s.layout;
 			if (typeof s.inverted === "boolean") this.inverted = s.inverted;
 			if (typeof s.focusId === "string" || s.focusId === null) this.focusId = s.focusId ?? null;
-			if (typeof s.fullFocus === "boolean") this.fullFocus = s.fullFocus;
-			if (Array.isArray(s.columnPath)) {
-				this.columnPath = s.columnPath.filter((x): x is string => typeof x === "string");
-			}
 			if (Array.isArray(s.collapsed)) {
 				this.collapsed = new Set(s.collapsed.filter((x): x is string => typeof x === "string"));
+			}
+			if (Array.isArray(s.expanded)) {
+				this.expanded = new Set(s.expanded.filter((x): x is string => typeof x === "string"));
 			}
 			if (typeof s.showDeps === "boolean") this.showDeps = s.showDeps;
 		}
 		await super.setState(state, result);
 	}
 
-	protected buildToolbarActions(actions: HTMLElement, _model: BoardModel): void {
+	protected buildToolbarActions(actions: HTMLElement, model: BoardModel): void {
 		const group = actions.createDiv({ cls: "tt-layout-switch" });
 		const defs: Array<[TreeLayout, string, string]> = [
 			["list", "list", "List"],
 			["diagram", "git-fork", "Diagram"],
-			["columns", "columns-3", "Columns"],
 		];
 		for (const [layout, icon, label] of defs) {
 			const btn = group.createEl("button", { cls: "tt-layout-btn", attr: { "aria-label": label } });
@@ -179,7 +202,7 @@ export class TreeView extends TaskTreeView {
 			});
 		}
 
-		if (this.layout === "diagram" || this.layout === "columns") {
+		if (this.layout === "diagram") {
 			const flip = actions.createEl("button", {
 				cls: "tt-layout-btn tt-flip-btn",
 				attr: { "aria-label": "Invert: put the goal on the right, enablers flowing into it" },
@@ -192,6 +215,17 @@ export class TreeView extends TaskTreeView {
 				void this.render();
 			});
 		}
+
+		// The escape hatch for the depth default, and the answer to "where did my tasks go".
+		// One button, both directions, remembered per board — so "I want it all open" is a
+		// gesture the plugin honours rather than a setting it has to carry forever.
+		const folded = this.anythingFolded(model);
+		const foldAll = actions.createEl("button", {
+			cls: "tt-layout-btn",
+			attr: { "aria-label": folded ? "Expand every branch" : "Collapse every branch" },
+		});
+		setIcon(foldAll, folded ? "chevrons-up-down" : "chevrons-down-up");
+		this.registerDomEvent(foldAll, "click", () => this.setAllFolded(model, !folded));
 
 		if (this.layout === "diagram") {
 			const deps = actions.createEl("button", {
@@ -209,9 +243,11 @@ export class TreeView extends TaskTreeView {
 	}
 
 	protected renderBoard(container: HTMLElement, model: BoardModel): void {
-		this.buildToolbar(container, model);
+		// Before the toolbar: the fold-all button asks isCollapsed which way to point, and
+		// isCollapsed resolves the focused node through `byId`.
 		this.prepareModel(model);
-		if (!this.fullFocus && this.plugin.settings.showBoardStats) {
+		this.buildToolbar(container, model);
+		if (this.plugin.settings.showBoardStats) {
 			this.renderDashboardHeader(container, model, { compact: true });
 		}
 		const scroll = container.createDiv({ cls: "tt-tree tt-scroll" });
@@ -236,10 +272,6 @@ export class TreeView extends TaskTreeView {
 			}
 		}
 
-		if (this.fullFocus) {
-			scroll.addClass("tt-fullfocus");
-			if (focusNode) this.renderFocusHeader(scroll, focusNode, model);
-		}
 		if (focusNode) this.renderFocusBar(scroll, focusNode, model);
 
 		if (roots.length === 0) {
@@ -247,13 +279,8 @@ export class TreeView extends TaskTreeView {
 			return;
 		}
 
-		if (this.layout === "diagram") {
-			this.renderDiagram(scroll, roots, model);
-		} else if (this.layout === "columns") {
-			this.renderColumns(scroll, roots, model);
-		} else {
-			this.renderList(scroll, roots, model);
-		}
+		if (this.layout === "diagram") this.renderDiagram(scroll, roots, model);
+		else this.renderList(scroll, roots, model);
 	}
 
 	// ---- shared row content --------------------------------------------------
@@ -268,10 +295,10 @@ export class TreeView extends TaskTreeView {
 
 		const toggle = host.createSpan({ cls: "tt-toggle" });
 		if (opts.toggle === "collapse" && hasChildren) {
-			setIcon(toggle, this.collapsed.has(node.id) ? "chevron-right" : "chevron-down");
+			setIcon(toggle, this.isCollapsed(node) ? "chevron-right" : "chevron-down");
 			this.registerDomEvent(toggle, "click", (e) => {
 				e.stopPropagation();
-				this.toggleCollapse(node.id);
+				this.toggleCollapse(node);
 			});
 		} else if (opts.toggle === "drill" && hasChildren) {
 			setIcon(toggle, "chevron-right");
@@ -322,15 +349,6 @@ export class TreeView extends TaskTreeView {
 		if (node.override) createOverrideBadge(meta, node.override);
 		createDependencyBadge(meta, node, dependencyInfo(node, model.graph));
 		createBlockedBelowMark(meta, node);
-
-		if (hasChildren) {
-			const focusBtn = meta.createSpan({ cls: "tt-focus-btn", attr: { "aria-label": "Open in full focus" } });
-			setIcon(focusBtn, "scan-search");
-			this.registerDomEvent(focusBtn, "click", (e) => {
-				e.stopPropagation();
-				this.startFullFocus(model, node.id);
-			});
-		}
 
 		const noteBtn = meta.createSpan({ cls: "tt-row-btn tt-note-btn", attr: { "aria-label": "Open / create the task's note" } });
 		if (node.ownNoteLink) noteBtn.addClass("has-note"); // stays faintly visible: this task has a note
@@ -384,7 +402,7 @@ export class TreeView extends TaskTreeView {
 		const row = li.createDiv({ cls: "tt-row" });
 		row.setAttribute("role", "treeitem");
 		row.setAttribute("aria-level", String(node.depth + 1));
-		if (node.children.length > 0) row.setAttribute("aria-expanded", String(!this.collapsed.has(node.id)));
+		if (node.children.length > 0) row.setAttribute("aria-expanded", String(!this.isCollapsed(node)));
 		// Roving tabindex: the tree is ONE tab stop, the arrows do the walking.
 		row.tabIndex = -1;
 		this.buildRowContent(row, node, model, {
@@ -392,7 +410,7 @@ export class TreeView extends TaskTreeView {
 			editTrigger: "click",
 		});
 
-		if (node.children.length > 0 && !this.collapsed.has(node.id)) {
+		if (node.children.length > 0 && !this.isCollapsed(node)) {
 			const childUl = li.createEl("ul", { cls: "tt-tree-list" });
 			childUl.dataset.parentId = node.id;
 			childUl.dataset.parentDepth = String(node.depth);
@@ -452,7 +470,7 @@ export class TreeView extends TaskTreeView {
 			const fold = (): void => {
 				e.preventDefault();
 				this.pendingFocusId = node.id; // come back to this row after the re-render
-				this.toggleCollapse(node.id);
+				this.toggleCollapse(node);
 			};
 
 			// Alt+arrows restructure. Checked first: they share the arrow keys with
@@ -469,74 +487,14 @@ export class TreeView extends TaskTreeView {
 					return;
 				case "ArrowRight":
 					// Closed branch opens; anything else steps to the next row.
-					if (node.children.length > 0 && this.collapsed.has(node.id)) fold();
+					if (node.children.length > 0 && this.isCollapsed(node)) fold();
 					else moveTo(rows[idx + 1]);
 					return;
 				case "ArrowLeft":
 					// Open branch closes; a leaf climbs to its parent.
-					if (node.children.length > 0 && !this.collapsed.has(node.id)) fold();
+					if (node.children.length > 0 && !this.isCollapsed(node)) fold();
 					else if (node.parentId) moveTo(spec.rowFor(container, node.parentId));
 					return;
-				default:
-					return;
-			}
-		});
-	}
-
-	/**
-	 * Miller columns navigate across panes, not up and down one list, so they get their
-	 * own arrow semantics: ↑↓ within the pane, → drills in, ← steps back out.
-	 */
-	private wireColumnsKeyboard(wrap: HTMLElement, model: BoardModel): void {
-		const rowFor = (id: string): HTMLElement | null =>
-			wrap.querySelector<HTMLElement>(`.tt-col-item[data-id="${CSS.escape(id)}"]`);
-		this.landFocus(wrap.querySelector<HTMLElement>(".tt-col-item"), rowFor);
-
-		this.registerDomEvent(wrap, "keydown", (e: KeyboardEvent) => {
-			const row = this.keyboardRow(e, wrap, ".tt-col-item");
-			if (!row) return;
-			const node = this.byId.get(row.dataset.id ?? "");
-			if (!node) return;
-
-			if (e.altKey && this.handleStructureKey(e, node, model)) return;
-			if (this.handleSharedKey(e, row, node, model)) return;
-
-			const pane = row.closest<HTMLElement>(".tt-column-pane");
-			const panes = Array.from(wrap.querySelectorAll<HTMLElement>(".tt-column-pane"));
-			const colIndex = pane ? panes.indexOf(pane) : -1;
-			const siblings = pane
-				? Array.from(pane.querySelectorAll<HTMLElement>(".tt-col-item"))
-				: [];
-			const at = siblings.indexOf(row);
-			const moveTo = (to: HTMLElement | null | undefined): void => {
-				if (!to) return;
-				e.preventDefault();
-				row.tabIndex = -1;
-				to.tabIndex = 0;
-				to.focus();
-				to.scrollIntoView({ block: "nearest" });
-			};
-
-			switch (e.key) {
-				case "ArrowDown":
-					moveTo(siblings[at + 1]);
-					return;
-				case "ArrowUp":
-					moveTo(siblings[at - 1]);
-					return;
-				case "ArrowRight":
-					// Drill in, landing on the first child in the pane that opens.
-					if (node.children.length === 0 || colIndex < 0) return;
-					e.preventDefault();
-					this.pendingFocusId = node.children[0]?.id ?? node.id;
-					this.selectColumn(node, colIndex);
-					return;
-				case "ArrowLeft": {
-					// Step back out to the parent's pane.
-					if (!node.parentId) return;
-					moveTo(rowFor(node.parentId));
-					return;
-				}
 				default:
 					return;
 			}
@@ -813,7 +771,10 @@ export class TreeView extends TaskTreeView {
 			toggle: "collapse",
 			editTrigger: "click",
 		});
-		if (node.children.length > 0 && !this.collapsed.has(node.id)) {
+		// isCollapsed, not `collapsed.has` — the depth default is part of the rule, and the
+		// chevron above already reads it. Bypassing it here is how the diagram ended up
+		// drawing an open branch under a chevron pointing right.
+		if (node.children.length > 0 && !this.isCollapsed(node)) {
 			const kids = dnode.createDiv({ cls: "tt-dchildren" });
 			kids.dataset.parentId = node.id;
 			kids.dataset.parentDepth = String(node.depth);
@@ -822,99 +783,7 @@ export class TreeView extends TaskTreeView {
 		}
 	}
 
-	// ---- layout: columns (Miller / drill-down) -------------------------------
-
-	private renderColumns(scroll: HTMLElement, roots: TaskNode[], model: BoardModel): void {
-		// Prune any selection ids that no longer exist (e.g. deleted by an edit).
-		const pruned: string[] = [];
-		for (const id of this.columnPath) {
-			if (this.byId.has(id)) pruned.push(id);
-			else break;
-		}
-		this.columnPath = pruned;
-
-		const wrap = scroll.createDiv({ cls: "tt-columns" });
-		if (this.inverted) wrap.addClass("is-inverted");
-		this.renderColumnPane(wrap, roots, this.boardTitle(model), 0, model);
-
-		for (let i = 0; i < this.columnPath.length; i++) {
-			const parentId = this.columnPath[i];
-			if (!parentId) break;
-			const parentNode = this.byId.get(parentId);
-			if (!parentNode || parentNode.children.length === 0) break;
-			this.renderColumnPane(wrap, parentNode.children, parentNode.text || "…", i + 1, model);
-		}
-
-		// Inverted: put the goal pane on the right by reversing the DOM order with
-		// normal flex-direction. (CSS row-reverse overflows unreachably to the left
-		// in a horizontal scroll container, hiding deep panes.)
-		if (this.inverted) {
-			const panes = Array.from(wrap.children);
-			for (let i = panes.length - 1; i >= 0; i--) {
-				const pane = panes[i];
-				if (pane) wrap.appendChild(pane);
-			}
-		}
-
-		// After the DOM settles, so the tab stop lands on a pane that is actually there.
-		this.wireColumnsKeyboard(wrap, model);
-	}
-
-	private renderColumnPane(
-		wrap: HTMLElement,
-		items: TaskNode[],
-		header: string,
-		colIndex: number,
-		model: BoardModel,
-	): void {
-		const selectedId = this.columnPath[colIndex];
-		const pane = wrap.createDiv({ cls: "tt-column-pane" });
-		pane.createDiv({ cls: "tt-column-pane-head", text: header });
-		const body = pane.createDiv({ cls: "tt-column-pane-body" });
-		// The drop-parent for this column: root for column 0, else the drilled node it lists.
-		if (colIndex === 0) {
-			body.dataset.parentId = "";
-			body.dataset.parentDepth = "-1";
-			body.dataset.parentLine = String(model.bodyStart - 1);
-		} else {
-			const parentId = this.columnPath[colIndex - 1];
-			const parentNode = parentId ? this.byId.get(parentId) : undefined;
-			if (parentNode) {
-				body.dataset.parentId = parentNode.id;
-				body.dataset.parentDepth = String(parentNode.depth);
-				body.dataset.parentLine = String(parentNode.line);
-			}
-		}
-		for (const node of items) {
-			const item = body.createDiv({ cls: "tt-col-item" });
-			item.dataset.id = node.id;
-			item.dataset.line = String(node.line);
-			item.dataset.subtreeEnd = String(node.lastDescLine);
-			item.setAttribute("data-status", node.statusChar); // not `data-task`: Obsidian core styles that attr
-			item.tabIndex = -1; // roving tabindex, same contract as the list layout
-			if (node.id === selectedId) item.addClass("is-selected");
-			this.buildRowContent(item, node, model, {
-				toggle: "drill",
-				editTrigger: "dblclick",
-			});
-			this.registerDomEvent(item, "click", () => this.selectColumn(node, colIndex));
-		}
-	}
-
-	private selectColumn(node: TaskNode, colIndex: number): void {
-		const path = this.columnPath.slice(0, colIndex);
-		path.push(node.id);
-		this.columnPath = path;
-		this.app.workspace.requestSaveLayout();
-		void this.render();
-	}
-
-	// ---- full focus ----------------------------------------------------------
-
-	private startFullFocus(model: BoardModel, id: string): void {
-		void this.plugin.activateFocusView(model.file.path, id);
-	}
-
+	// ---- task notes ----------------------------------------------------------
 	/** Open (or create + link) the task's own note, with its structural frontmatter. */
 	private openTaskNote(node: TaskNode, model: BoardModel): void {
 		const path: string[] = [];
@@ -930,21 +799,9 @@ export class TreeView extends TaskTreeView {
 		const meta: TaskNoteMeta = { depth: node.depth, path, parentText: parent ? parent.text : null };
 		void openOrCreateTaskNote(this.plugin, model, node, meta);
 	}
-
-	private renderFocusHeader(container: HTMLElement, node: TaskNode, model: BoardModel): void {
-		const head = container.createDiv({ cls: "tt-fullfocus-header" });
-		head.createEl("h2", { cls: "tt-fullfocus-title", text: taskDisplayText(node) || "(untitled)" });
-		const meta = head.createDiv({ cls: "tt-node-meta" });
-		createStatusChip(meta, node, model.columns);
-		createProgressBadge(meta, node);
-		if (node.override) createOverrideBadge(meta, node.override);
-		createDependencyBadge(meta, node, dependencyInfo(node, model.graph));
-	}
-
-	/** Change the in-place focus. Always clears the columns drill path so the two can't desync. */
+	/** Change the in-place focus — now the ONE scoping mechanism in the view. */
 	private setFocus(id: string | null): void {
 		this.focusId = id;
-		this.columnPath = [];
 		this.app.workspace.requestSaveLayout();
 		void this.render();
 	}
@@ -973,11 +830,37 @@ export class TreeView extends TaskTreeView {
 
 	// ---- interactions --------------------------------------------------------
 
-	private toggleCollapse(id: string): void {
-		if (this.collapsed.has(id)) this.collapsed.delete(id);
-		else this.collapsed.add(id);
+	private toggleCollapse(node: TaskNode): void {
+		// Record the DECISION, not just the flip: a node folded by the depth default and one
+		// folded by hand look identical to `collapsed`, but only the second should survive a
+		// re-render that recomputes depth.
+		if (this.isCollapsed(node)) {
+			this.collapsed.delete(node.id);
+			this.expanded.add(node.id);
+		} else {
+			this.expanded.delete(node.id);
+			this.collapsed.add(node.id);
+		}
 		this.app.workspace.requestSaveLayout();
 		void this.render();
+	}
+
+	/** Open or fold the whole board in one gesture — the escape hatch for the depth default. */
+	private setAllFolded(model: BoardModel, folded: boolean): void {
+		this.collapsed.clear();
+		this.expanded.clear();
+		for (const n of flatten(model.roots)) {
+			if (n.children.length === 0) continue;
+			if (folded) this.collapsed.add(n.id);
+			else this.expanded.add(n.id);
+		}
+		this.app.workspace.requestSaveLayout();
+		void this.render();
+	}
+
+	/** True when some branch is currently hidden — decides which way the toolbar button goes. */
+	private anythingFolded(model: BoardModel): boolean {
+		return flatten(model.roots).some((n) => n.children.length > 0 && this.isCollapsed(n));
 	}
 
 	private cycle(node: TaskNode, model: BoardModel): Promise<void> {
@@ -1258,16 +1141,13 @@ export class TreeView extends TaskTreeView {
 		);
 		menu.addSeparator();
 		if (node.children.length > 0) {
+			// One focus, in place. "Open in full focus" opened a second scoping mechanism in a
+			// new tab whose title was identical for every task — focus five parents while
+			// exploring and you had five tabs called "Task Tree — Focus".
 			menu.addItem((i) =>
 				i
-					.setTitle("Open in full focus")
+					.setTitle("Focus on this branch")
 					.setIcon("scan-search")
-					.onClick(() => this.startFullFocus(model, node.id)),
-			);
-			menu.addItem((i) =>
-				i
-					.setTitle("Focus here (in place)")
-					.setIcon("crosshair")
 					.onClick(() => this.setFocus(node.id)),
 			);
 		}

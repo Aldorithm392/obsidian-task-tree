@@ -48,8 +48,8 @@ One structure, three layers over it:
 ### ✅ Shipped
 - Parse nested Markdown checklist tasks → in-memory tree; **roll-up** parent state from children;
   progress signal; **manual override** (`[tt-override:: role]`); stable **block ids** (`^t-…`).
-- Views: **Kanban** (drag = change state), **Tree** with **three layouts** — List / horizontal
-  **Diagram** / **Columns** (drill-down) — a **full-focus** pane, collapse/focus.
+- Views: **Kanban** (drag = change state), **Tree** with **two layouts** — List / horizontal
+  **Diagram** — sharing one fold state that opens the board two levels deep, plus focus-on-branch.
 - Editing from the UI: status toggle, add/delete/rename/tag, **inline + / −** on every node, drag
   (grip handle, list) + deterministic **Move up/down / Indent / Outdent**.
 - Clean-by-default view (stats opt-in); OKF-aligned format; 38 pure-logic tests.

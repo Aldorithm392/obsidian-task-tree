@@ -63,6 +63,8 @@ src/
     rollup.ts          computeRollup()
     insights.ts        computeSummary / collectBlockers / collectNextUp / markBlockedPaths (dashboard)
                        + resolveEdges / collectDependencyBlocked (tt-blocked-by graph, cycles)
+    folding.ts         isFolded() / visibleNodes() — the tri-state fold rule (explicit collapse >
+                       explicit expand > depth default), so the off-by-one is a test not a surprise
     notemeta.ts        expectedNoteFields / noteFieldsDrift / retiredFieldsPresent — single source
                        of truth for task-note frontmatter (creation + reconcile build from it)
     noteprogress.ts    walkNoteProgress() — recursive checklist counts across linked task-notes
@@ -75,8 +77,8 @@ src/
   views/
     base-view.ts       TaskTreeView base + VIEW_TYPE_* (kanban/tree/dashboard); dashboard header + blockers panel
     kanban-view.ts     columns from model; SortableJS per column = Operation B; CRUD menu
-    tree-view.ts       3 layouts (list/diagram/columns), collapse/focus, full-focus, checkbox = toggle
-                       done, keyboard layer, localRect() for overlay geometry, reparent = Operation A
+    tree-view.ts       2 layouts (list/diagram) sharing ONE fold state, focus-on-branch, derived
+                       checkbox = readout, keyboard layer, localRect() geometry, reparent = Op A
     dashboard-view.ts  extends TreeView: full header + blockers panel + tree
     card.ts            shared chip / progress / note-progress / override-badge DOM + roleIcon()
     modals.ts          promptText() / confirmModal() -> confirm|reject|dismiss / confirmed() /
@@ -86,9 +88,17 @@ src/
 **Dashboard + editing:** views carry a compact dashboard header (rename board / add task / stats);
 `DashboardView` adds the full Blockers & next-up panel. Editing (add/delete/rename/tag) goes through
 `board-controller` CRUD wrappers → pure `writer` ops. `markBlockedPaths` runs in `loadBoard`, so every
-view can show ⚠ on ancestors of a blocked leaf. Tree layout + focus state persist in the leaf view-state.
+view can show ⚠ on ancestors of a blocked leaf. Tree layout + fold + focus state persist in the leaf
+view-state.
 
-**Keyboard:** every layout is walkable on a roving tabindex (`wireTreeKeyboard` / `wireColumnsKeyboard` in
+**One hiding gesture.** A board opens `FROZEN.openDepth` levels deep; a chevron records an explicit
+decision that outranks the default forever, in either direction — hence `collapsed` *and* `expanded`.
+Both layouts read `isCollapsed()`, never the sets: reading `collapsed.has(id)` directly is how the
+diagram once drew an open branch under a chevron pointing right, and a test now fails on it. Depth
+counts from the **view root** (`FoldState.baseDepth`), not the board root — otherwise focusing a deep
+branch hides the very subtree you asked to see.
+
+**Keyboard:** every layout is walkable on a roving tabindex (`wireTreeKeyboard` in
 `tree-view.ts`; the list is also a real ARIA tree): ↑↓ walk, ←→ fold, Enter edits, Space toggles. Anything that writes re-renders, so
 the row to land on afterwards is stashed in `pendingFocusId` and re-focused on the way back — the
 same trick `pendingEdit` uses in `base-view.ts`.

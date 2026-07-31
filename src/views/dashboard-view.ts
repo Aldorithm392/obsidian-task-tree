@@ -25,8 +25,9 @@ export class DashboardView extends TreeView {
 	}
 
 	protected renderBoard(container: HTMLElement, model: BoardModel): void {
-		this.buildToolbar(container, model);
+		// Same order as TreeView: the toolbar's fold-all button reads state prepareModel builds.
 		this.prepareModel(model);
+		this.buildToolbar(container, model);
 		this.renderDashboardHeader(container, model);
 		this.renderBlockersPanel(container, model);
 		const scroll = container.createDiv({ cls: "tt-tree tt-scroll" });

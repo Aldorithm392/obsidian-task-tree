@@ -16,7 +16,16 @@ node tools/visual/render.mjs [outDir]     # default: ./visual-out
 ```
 
 It renders the list and diagram layouts in light, dark and Compact, prints the laid-out
-content height of each, and writes a PNG per variant.
+content height of each, and writes a PNG per variant. The `diagram-folded` job renders at
+`openDepth: 2` — what a board actually opens as — while plain `diagram` stays fully expanded,
+because the packing and geometry questions are about the widest case.
+
+**The fixtures must not flatter the plugin.** Every parent in them carries a `K/D`, because
+`createProgressBadge` emits one whenever `progress.total > 0` — i.e. always, for a node with task
+children. Two fixture parents were missing theirs; harmless while everything rendered expanded, and
+a dead end the moment folding shipped, since the fraction on a folded parent *is* the branch. The
+diagram's progress bar was likewise hard-coded to `width:50%` next to whatever fraction it printed.
+An instrument that disagrees with the thing it measures is worse than no instrument.
 
 ## What it is not
 

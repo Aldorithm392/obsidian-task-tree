@@ -12,9 +12,9 @@ export type Role = "todo" | "doing" | "done" | "cancelled" | "blocked";
 export const ALL_ROLES: Role[] = ["todo", "doing", "done", "cancelled", "blocked"];
 
 /** How the Tree view lays out the hierarchy. */
-export type TreeLayout = "list" | "diagram" | "columns";
+export type TreeLayout = "list" | "diagram";
 
-export const ALL_TREE_LAYOUTS: TreeLayout[] = ["list", "diagram", "columns"];
+export const ALL_TREE_LAYOUTS: TreeLayout[] = ["list", "diagram"];
 
 /** One Kanban column, mapped to exactly one checkbox status character. */
 export interface ColumnDef {

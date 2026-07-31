@@ -4,7 +4,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { parseLine } from "../src/model/line.ts";
-import { buildTree } from "../src/model/parser.ts";
+import { buildTree, flatten as flattenAll } from "../src/model/parser.ts";
+import { isFolded, visibleNodes } from "../src/model/folding.ts";
 import { computeRollup, isDerived } from "../src/model/rollup.ts";
 import {
 	setStatusInText,
@@ -890,6 +891,81 @@ test("a cancelled child no longer blocks its milestone under the shipped default
 	const roots = parse(["- [ ] Infrastructure", "\t- [x] Domain", "\t- [-] Dropped idea"], DEFAULT_COLUMNS);
 	assert.equal(roots[0].effectiveRole, "done");
 	assert.deepEqual(roots[0].progress, { done: 1, total: 1 });
+});
+
+// ---- what a board shows when it opens ----------------------------------------
+console.log("folding");
+const FOLD = (openDepth, collapsed = [], expanded = []) => ({
+	openDepth,
+	collapsed: new Set(collapsed),
+	expanded: new Set(expanded),
+});
+const DEEP = [
+	"- [ ] Design ^t-d",
+	"\t- [ ] Wireframes ^t-w",
+	"\t- [ ] Visual language ^t-v",
+	"\t\t- [ ] Typography ^t-ty",
+	"\t\t- [ ] Colour ^t-c",
+	"- [ ] Ship ^t-s",
+];
+test("a board opens two levels deep — roots and their children, nothing below", () => {
+	const rows = visibleNodes(parse(DEEP), FOLD(2)).map((n) => n.text);
+	assert.deepEqual(rows, ["Design", "Wireframes", "Visual language", "Ship"]);
+});
+test("the off-by-one: openDepth 1 shows only roots, 3 shows grandchildren", () => {
+	assert.deepEqual(
+		visibleNodes(parse(DEEP), FOLD(1)).map((n) => n.text),
+		["Design", "Ship"],
+	);
+	assert.equal(visibleNodes(parse(DEEP), FOLD(3)).length, 6);
+});
+test("an explicit choice outranks depth in BOTH directions", () => {
+	// This is why folding had to become tri-state: without an `expanded` set, unfolding a
+	// deep branch would silently re-fold the next time the depth default was applied.
+	const opened = visibleNodes(parse(DEEP), FOLD(2, [], ["t-v"])).map((n) => n.text);
+	assert.ok(opened.includes("Typography"), "hand-opened branch stays open");
+	const shut = visibleNodes(parse(DEEP), FOLD(2, ["t-d"])).map((n) => n.text);
+	assert.deepEqual(shut, ["Design", "Ship"], "hand-folded root stays shut");
+});
+test("isFolded ignores childless nodes' depth for rendering purposes", () => {
+	const roots = parse(DEEP);
+	const leaf = roots[0].children[0]; // Wireframes, depth 1, no children
+	assert.equal(isFolded(leaf, FOLD(2)), true, "the predicate is purely about depth…");
+	assert.deepEqual(
+		visibleNodes(roots, FOLD(2)).map((n) => n.text).filter((t) => t === "Wireframes"),
+		["Wireframes"],
+		"…and a node with nothing to hide is still shown",
+	);
+});
+test("a fully expanded board equals the flattened tree", () => {
+	const roots = parse(DEEP);
+	const all = flattenAll(roots).map((n) => n.text);
+	assert.deepEqual(visibleNodes(roots, FOLD(99)).map((n) => n.text), all);
+});
+test("depth is measured from the view root, so focusing a branch opens it", () => {
+	// Focus scopes the view to one node; that node keeps its board depth. Without a base,
+	// focusing "Visual language" (depth 1) would render it as the single row you asked for
+	// and then hide everything under it — the exact opposite of what focus means.
+	const vl = parse(DEEP)[0].children[1];
+	assert.equal(isFolded(vl, FOLD(2)), true, "deep in the board: folded");
+	assert.equal(
+		isFolded(vl, { ...FOLD(2), baseDepth: vl.depth }),
+		false,
+		"as the view root: open",
+	);
+	assert.deepEqual(
+		visibleNodes([vl], { ...FOLD(2), baseDepth: vl.depth }).map((n) => n.text),
+		["Visual language", "Typography", "Colour"],
+	);
+});
+test("no layout reads the fold sets behind isCollapsed's back", () => {
+	// The whole point of one hiding gesture is that every layout hides the same thing. The
+	// diagram once tested `collapsed.has(id)` directly, so it drew an open branch under a
+	// chevron pointing right: the icon read the depth default, the recursion didn't. The
+	// sets may only be WRITTEN outside the accessor — reads go through isCollapsed().
+	const view = readFileSync(new URL("../src/views/tree-view.ts", import.meta.url), "utf8");
+	const reads = [...view.matchAll(/this\.(?:collapsed|expanded)\.has\(/g)];
+	assert.equal(reads.length, 0, "found a raw fold-set read; call this.isCollapsed(node)");
 });
 
 // ---- derived state is not the user's to set directly -------------------------

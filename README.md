@@ -133,13 +133,21 @@ then a deep subtask blocks it.** Instead of getting ambushed, you get:
 
 Open it with **"Open current file as dashboard"** (or the ribbon icon).
 
-### Three tree layouts + full focus
+### A board opens shallow, and unfolds where you look
 
-The **tree** view can be drawn three ways (toolbar switch, remembered per board): **List** (vertical),
+Roll-up computes, for every parent, the one number that answers *how is that going*. A view that then
+opens every branch has spent that signal before you see it — a 40-task project arrives as 40 rows and
+the fraction on the parent is decoration.
+
+So a board **opens two levels deep**: your milestones and what's directly under them. A folded parent
+still carries its state chip and its `2/5`, which is the whole point — that fraction is permission
+not to look. Click the chevron on anything you *do* want to look at; that choice sticks, in either
+direction, per board. **Fold all / unfold all** sits in the toolbar.
+
+The **tree** view is drawn two ways (toolbar switch, remembered per board): **List** (vertical) and
 **Diagram** (a horizontal tree with the board's goal as its apex — flip it with the **invert** toggle
-so enabling tasks flow *into* the goal), and **Columns** (drill down level by level, Finder-style).
-A **focus button** on any task opens it and its subtree in a distraction-free full-width pane, with a
-breadcrumb to step back out.
+so enabling tasks flow *into* the goal). Both read the same fold state, so folding a branch in one
+folds it in the other. **Focus on this branch** in the right-click menu narrows the view to a subtree.
 
 ### Task = note: every task can be its own page
 
@@ -173,10 +181,9 @@ lists the biggest hidden piles first. Depth and on/off are in **Settings → Tas
 
 ### Keyboard
 
-Each layout is one tab stop; from there **↑ ↓** walk the rows, **← →** fold and unfold (in the
-Columns layout they drill in and step back out), **Enter** edits a task in place, **Space** toggles
-it done, **Alt + arrows** move / indent / outdent, and the **menu key** opens the context menu right
-where you are. The **"Add a task to the open board"** command takes a hotkey, so capture never needs
+Each layout is one tab stop; from there **↑ ↓** walk the rows, **← →** fold and unfold, **Enter**
+edits a task in place, **Space** toggles it done, **Alt + arrows** move / indent / outdent, and the
+**menu key** opens the context menu right where you are. The **"Add a task to the open board"** command takes a hotkey, so capture never needs
 the mouse.
 
 ### Room to breathe

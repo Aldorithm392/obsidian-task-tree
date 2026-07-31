@@ -41,6 +41,8 @@ const JOBS = [
 	{ name: "list-compact", html: () => listHtml(TREE), w: 780, h: 470, compact: true },
 	{ name: "list-dark", html: () => listHtml(TREE), w: 780, h: 560, dark: true },
 	{ name: "diagram", html: () => diagramHtml(UNEVEN_TREE), w: 1220, h: 720 },
+	// What the diagram opens as, now that it shares the list's fold state.
+	{ name: "diagram-folded", html: () => diagramHtml(UNEVEN_TREE, { openDepth: 2 }), w: 1220, h: 720 },
 	{ name: "diagram-inverted", html: () => diagramHtml(UNEVEN_TREE, { inverted: true }), w: 1220, h: 720 },
 	{ name: "diagram-dark", html: () => diagramHtml(UNEVEN_TREE), w: 1220, h: 720, dark: true },
 ];

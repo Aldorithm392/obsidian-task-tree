@@ -353,16 +353,6 @@
    these is DELETE, and an invisible element with `cursor: pointer` is still a live target.
    Without it, a stray click in the row's whitespace could delete a task the user never
    pointed at. */
-.tt-focus-btn,
-.tt-row-btn {
-	display: inline-flex;
-	color: var(--text-faint);
-	cursor: pointer;
-	opacity: 0;
-	pointer-events: none;
-	transition: opacity 80ms ease;
-}
-.tt-node-body:hover .tt-focus-btn,
 .tt-node-body:hover .tt-row-btn,
 .tt-card:hover .tt-row-btn {
 	opacity: 0.75;
@@ -372,7 +362,6 @@
    above — invisibly tappable. On a touch device they are simply always visible; the
    manifest promises mobile support, so the row has to work without a pointer. */
 @media (hover: none) {
-	.tt-focus-btn,
 	.tt-row-btn {
 		opacity: 0.55;
 		pointer-events: auto;
@@ -384,18 +373,8 @@
 	opacity: 0.45;
 	color: var(--interactive-accent);
 }
-.tt-focus-btn:hover,
-.tt-row-btn:hover {
-	opacity: 1;
-	color: var(--text-normal);
-}
 .tt-del-btn:hover {
 	color: var(--text-error);
-}
-.tt-focus-btn svg,
-.tt-row-btn svg {
-	width: 14px;
-	height: 14px;
 }
 
 /* ---- focus bar ---- */
@@ -907,92 +886,15 @@ h2.tt-dash-title {
 }
 
 /* ---- columns layout ---- */
-.tt-columns {
-	display: flex;
-	align-items: stretch;
-	height: 100%;
-}
 /* inverted: the goal pane is moved to the right by reversing DOM order in JS
    (renderColumns), NOT via flex-direction: row-reverse, which would overflow
    unreachably to the left inside the horizontal scroll container. */
-.tt-column-pane {
-	flex: 0 0 300px;
-	display: flex;
-	flex-direction: column;
-	border-right: 1px solid var(--background-modifier-border);
-	max-height: 100%;
-}
-.tt-column-pane:last-child {
-	border-right: none;
-}
-.tt-column-pane-head {
-	padding: 6px 10px;
-	font-weight: 600;
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-	border-bottom: 1px solid var(--background-modifier-border);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-.tt-column-pane-body {
-	overflow-y: auto;
-	padding: 4px;
-}
 /* Miller columns: every row is exactly one line — the text ellipsizes (drilling in
    shows the children anyway), so grips, checkboxes and chips always line up. */
-.tt-col-item {
-	padding: 4px 6px;
-	border-radius: var(--radius-s);
-	cursor: pointer;
-	min-width: 0;
-	overflow: hidden;
-}
-.tt-col-item .tt-node-text {
-	flex: 1 1 auto;
-	min-width: 0;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-.tt-col-item .tt-node-meta {
-	flex: 0 0 auto;
-}
-.tt-col-item:hover {
-	background: var(--background-modifier-hover);
-}
-.tt-col-item.is-selected {
-	background: var(--background-modifier-active-hover, var(--background-modifier-hover));
-}
-
-/* ---- full focus ---- */
-.tt-fullfocus .tt-tree-list,
-.tt-fullfocus .tt-diagram,
-.tt-fullfocus .tt-focus-bar,
-.tt-fullfocus-header {
-	max-width: 900px;
-	margin-left: auto;
-	margin-right: auto;
-}
-.tt-fullfocus .tt-node-text {
-	font-size: var(--font-ui-medium);
-}
-.tt-fullfocus-header {
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	padding: 24px 12px 8px;
-}
-.tt-fullfocus-title {
-	margin: 0;
-}
 
 /* ---- a droppable tail so a task can be dropped at the END of a branch ---- */
 .tt-tree-list,
 .tt-dchildren,
-.tt-column-pane-body {
-	padding-bottom: 8px;
-}
 .tt-diagram {
 	padding-bottom: 16px;
 }

@@ -64,13 +64,24 @@ Setup: link the repo into `<vault>/.obsidian/plugins/task-tree`, `npm run dev`, 
 - [ ] Link a note to a plain note that is NOT `type: task-note` → its checklists are ignored.
 - [ ] Turn "Show note progress" off → every badge disappears; nothing else changes.
 
-## Keyboard (all three layouts)
+## Folding — what the board shows when it opens
+
+- [ ] Open a board 4 levels deep → only roots and their children are drawn; everything below is
+  folded. Switch to the **diagram** without touching anything → **the same** branches are folded.
+- [ ] Every folded parent still shows its state chip **and** its `K/D`. A parent you cannot judge
+  without opening it is the failure mode this whole default is betting against.
+- [ ] Unfold a deep branch, switch layouts, switch files and come back → it is **still open**
+  (an explicit choice outranks the depth default, permanently and in both directions).
+- [ ] Fold a root, reopen the board → still folded. Fold-all → everything shuts; the toolbar icon
+  flips; unfold-all reopens.
+- [ ] A chevron never points right over a branch that is drawn open, in **either** layout.
+
+## Keyboard (both layouts)
 
 - [ ] Tab once into the tree, then ↑ ↓ walk rows with a visible focus ring (light **and** dark) —
   check the list **and** the diagram.
 - [ ] → opens a collapsed branch and ← closes an open one, **keeping focus on the same row**;
   ← on a leaf jumps to its parent.
-- [ ] Columns layout: → drills into the next pane and lands on its first item; ← steps back out.
 - [ ] Enter opens the inline editor; Escape cancels it and Enter saves.
 - [ ] Space toggles done without scrolling the pane, and focus stays put after the re-render.
 - [ ] Alt+↑/↓ move the task, Alt+→/← indent and outdent — focus follows the **task**, not the slot.

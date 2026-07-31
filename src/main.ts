@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, normalizePath, type App } from "obsidian";
+import { Notice, Plugin, TFile, type App } from "obsidian";
 import { DEFAULT_SETTINGS, TaskTreeSettingTab, type TaskTreeSettings } from "./settings.ts";
 import { KanbanView } from "./views/kanban-view.ts";
 import { TreeView } from "./views/tree-view.ts";
@@ -195,6 +195,10 @@ export default class TaskTreePlugin extends Plugin {
 			if (key in stored) known[key] = stored[key];
 		}
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, known as Partial<TaskTreeSettings>);
+		// The Miller "columns" layout was removed; a stored value would render as nothing.
+		if (this.settings.treeLayout !== "list" && this.settings.treeLayout !== "diagram") {
+			this.settings.treeLayout = DEFAULT_SETTINGS.treeLayout;
+		}
 		if (!Array.isArray(this.settings.columns) || this.settings.columns.length === 0) {
 			this.settings.columns = DEFAULT_SETTINGS.columns.map((c) => ({ ...c }));
 		}
@@ -228,18 +232,6 @@ export default class TaskTreePlugin extends Plugin {
 			leaf = workspace.getLeaf("tab");
 			await leaf.setViewState({ type: viewType, active: true, state: { file: filePath } });
 		}
-		void workspace.revealLeaf(leaf);
-	}
-
-	/** Open a task + its subtree as a distraction-free full pane in the main area. */
-	async activateFocusView(filePath: string, focusId: string): Promise<void> {
-		const { workspace } = this.app;
-		const leaf = workspace.getLeaf("tab");
-		await leaf.setViewState({
-			type: VIEW_TYPE_TREE,
-			active: true,
-			state: { file: filePath, focusId, fullFocus: true },
-		});
 		void workspace.revealLeaf(leaf);
 	}
 

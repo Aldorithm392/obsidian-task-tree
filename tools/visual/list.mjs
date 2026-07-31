@@ -43,14 +43,21 @@ function row(node) {
 	return `<div class="tt-row" role="treeitem" tabindex="-1" aria-level="${(node.depth ?? 0) + 1}">` +
 		`<span class="tt-drag-handle"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="18" r="1"/></svg></span>` +
 		chev +
-		`<input type="checkbox" class="tt-checkbox"${node.role === "done" ? " checked" : ""}>` +
+		// Mirrors renderListNode: a node with task children is a readout, not a control.
+		`<input type="checkbox" class="tt-checkbox${node.children?.length ? " is-derived" : ""}"` +
+		`${node.role === "done" ? " checked" : ""}>` +
 		`<span class="tt-node-text${node.role === "done" ? " tt-done" : ""}">${node.text}</span>` +
 		meta(node) + `</div>`;
 }
 
+// Mirrors TreeView.isCollapsed with no explicit choices: a node folds once depth+1
+// reaches FROZEN.openDepth, so the fixture shows what a board actually opens as.
+const OPEN_DEPTH = 2;
+
 function li(node, depth = 0) {
 	const n = { ...node, depth };
-	const kids = node.children?.length
+	const folded = (node.children?.length ?? 0) > 0 && depth + 1 >= OPEN_DEPTH;
+	const kids = node.children?.length && !folded
 		? `<ul class="tt-tree-list" role="group">${node.children.map((c) => li(c, depth + 1)).join("")}</ul>`
 		: "";
 	return `<li class="tt-node" role="none" data-id="${node.id}" data-depth="${depth}" data-status=" ">${row(n)}${kids}</li>`;
@@ -81,7 +88,10 @@ export const TREE = [
 			{ id: "t-b2b", text: "Colour tokens", role: "todo", roleName: "To Do" },
 			{ id: "t-b2c", text: "Iconography", role: "todo", roleName: "To Do" },
 		] },
-		{ id: "t-b3", text: "Component library", role: "todo", roleName: "To Do", children: [
+		// Every parent carries its fraction — createProgressBadge renders whenever
+		// progress.total > 0, i.e. always for a node with task children. Once folding is the
+		// default that fraction IS the branch, so a parent without one would be a dead end.
+		{ id: "t-b3", text: "Component library", role: "todo", roleName: "To Do", progress: "0/1", pct: 0, children: [
 			{ id: "t-b3a", text: "Buttons", role: "todo", roleName: "To Do" },
 		] },
 	] },

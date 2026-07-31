@@ -43,10 +43,15 @@ body { margin: 0; font-family: -apple-system, "Segoe UI", sans-serif; color: var
 /** The row content buildRowContent() produces, as static HTML. */
 function rowContent(node) {
 	const chip = `<span class="tt-chip" data-role="${node.role ?? "todo"}">${node.roleName ?? "To Do"}</span>`;
+	// Width comes from the fraction, exactly as createProgressBadge computes it — a bar that
+	// disagrees with the number next to it is the instrument lying about the thing it measures.
+	const pct = node.progress
+		? Math.round((Number(node.progress.split("/")[0]) / Number(node.progress.split("/")[1])) * 100)
+		: 0;
 	const progress =
 		node.progress
 			? `<span class="tt-progress"><span class="tt-progress-text">${node.progress}</span>` +
-				`<div class="tt-progress-bar"><div class="tt-progress-fill" style="width:50%"></div></div></span>`
+				`<div class="tt-progress-bar"><div class="tt-progress-fill" style="width:${pct}%"></div></div></span>`
 			: "";
 	const noteBadge = node.notes
 		? `<span class="tt-note-progress is-open"><svg width="13" height="13"></svg>` +
@@ -65,17 +70,25 @@ function rowContent(node) {
 	);
 }
 
-function dnode(node) {
-	const kids = node.children?.length
-		? `<div class="tt-dchildren" data-parent-id="${node.id}">${node.children.map(dnode).join("")}</div>`
+// Mirrors renderDiagramNode: the diagram reads the SAME fold state as the list, so a
+// depth-limited render is what a board actually opens as. Infinity renders everything —
+// still the right fixture for the packing/geometry questions, which are about the widest case.
+function dnode(node, depth = 0, openDepth = Infinity) {
+	const folded = (node.children?.length ?? 0) > 0 && depth + 1 >= openDepth;
+	const kids = node.children?.length && !folded
+		? `<div class="tt-dchildren" data-parent-id="${node.id}">` +
+			`${node.children.map((c) => dnode(c, depth + 1, openDepth)).join("")}</div>`
 		: "";
 	return (
-		`<div class="tt-dnode" data-id="${node.id}" data-depth="${node.depth ?? 0}">` +
+		`<div class="tt-dnode" data-id="${node.id}" data-depth="${depth}">` +
 		`<div class="tt-dbox tt-node-body" data-status=" ">${rowContent(node)}</div>${kids}</div>`
 	);
 }
 
-export function diagramHtml(tree, { inverted = false, goal = "Website redesign" } = {}) {
+export function diagramHtml(
+	tree,
+	{ inverted = false, goal = "Website redesign", openDepth = Infinity } = {},
+) {
 	const canvasCls = `tt-diagram${inverted ? " is-inverted" : ""}`;
 	const goalBox =
 		`<div class="tt-dbox tt-goal-box tt-node-body">` +
@@ -88,14 +101,18 @@ export function diagramHtml(tree, { inverted = false, goal = "Website redesign" 
   <div class="tt-tree tt-scroll">
     <div class="${canvasCls}" data-parent-id="">
       <div class="tt-dnode">${goalBox}
-        <div class="tt-dchildren">${tree.map(dnode).join("")}</div>
+        <div class="tt-dchildren">${tree.map((n) => dnode(n, 0, openDepth)).join("")}</div>
       </div>
     </div>
   </div>
 </div>`;
 }
 
-/** A tree built to trigger the reported bug: sibling subtrees of wildly different height. */
+/**
+ * A tree built to trigger the reported bug: sibling subtrees of wildly different height.
+ * Every parent carries a fraction because the real renderer always emits one — with folding
+ * on by default, a parent without it is a branch you cannot judge without opening.
+ */
 export const UNEVEN_TREE = [
 	{ id: "t-a", text: "Discovery", role: "done", roleName: "Done", progress: "2/2", children: [
 		{ id: "t-a1", text: "Stakeholder interviews", role: "done", roleName: "Done" },
@@ -103,19 +120,19 @@ export const UNEVEN_TREE = [
 	] },
 	{ id: "t-b", text: "Design", role: "doing", roleName: "Doing", progress: "1/4", notes: "8", children: [
 		{ id: "t-b1", text: "Wireframes", role: "done", roleName: "Done" },
-		{ id: "t-b2", text: "Visual language", role: "doing", roleName: "Doing", children: [
+		{ id: "t-b2", text: "Visual language", role: "doing", roleName: "Doing", progress: "0/3", children: [
 			{ id: "t-b2a", text: "Typography scale", role: "todo", roleName: "To Do" },
 			{ id: "t-b2b", text: "Colour tokens", role: "todo", roleName: "To Do" },
 			{ id: "t-b2c", text: "Iconography", role: "todo", roleName: "To Do" },
 		] },
-		{ id: "t-b3", text: "Component library", role: "todo", roleName: "To Do", children: [
+		{ id: "t-b3", text: "Component library", role: "todo", roleName: "To Do", progress: "0/2", children: [
 			{ id: "t-b3a", text: "Buttons", role: "todo", roleName: "To Do" },
 			{ id: "t-b3b", text: "Forms", role: "todo", roleName: "To Do" },
 		] },
 		{ id: "t-b4", text: "Design review", role: "todo", roleName: "To Do" },
 	] },
 	{ id: "t-c", text: "Ship", role: "todo", roleName: "To Do" },
-	{ id: "t-d", text: "Post-launch", role: "todo", roleName: "To Do", children: [
+	{ id: "t-d", text: "Post-launch", role: "todo", roleName: "To Do", progress: "0/1", children: [
 		{ id: "t-d1", text: "Measure", role: "todo", roleName: "To Do" },
 	] },
 ];
